@@ -1,0 +1,46 @@
+[33mcommit a4ae622912973751a27b0dec71eb017fadd42bc2[m[33m ([m[1;31morigin/feature/camera-test[m[33m)[m
+Author: Siddhartha <sidawasthi88@gmail.com>
+Date:   Tue May 19 13:01:07 2026 +0545
+
+    Camera Tested
+
+[1mdiff --git a/src/recognition/camera_test.py b/src/recognition/camera_test.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..170afeb[m
+[1m--- /dev/null[m
+[1m+++ b/src/recognition/camera_test.py[m
+[36m@@ -0,0 +1,33 @@[m
+[32m+[m[32mimport cv2[m
+[32m+[m[32mimport face_recognition[m
+[32m+[m
+[32m+[m[32mcap = cv2.VideoCapture(0)[m
+[32m+[m[32mwindow_name = "Face Detection Test - Mirrored"[m
+[32m+[m[32mcv2.namedWindow(window_name, cv2.WINDOW_NORMAL)[m
+[32m+[m[32mcv2.resizeWindow(window_name, 800, 600)[m
+[32m+[m
+[32m+[m[32mprint("Press Q to quit.")[m
+[32m+[m
+[32m+[m[32mwhile True:[m
+[32m+[m[32m    ret, frame = cap.read()[m
+[32m+[m[32m    if not ret:[m
+[32m+[m[32m        continue[m
+[32m+[m
+[32m+[m[32m    # Mirror flip[m
+[32m+[m[32m    frame = cv2.flip(frame, 1)[m
+[32m+[m[32m    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)[m
+[32m+[m[32m    locations = face_recognition.face_locations(rgb)[m
+[32m+[m
+[32m+[m[32m    for top, right, bottom, left in locations:[m
+[32m+[m[32m        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)[m
+[32m+[m
+[32m+[m[32m    cv2.putText(frame, f"Faces: {len(locations)}", (10, 30),[m
+[32m+[m[32m                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)[m
+[32m+[m
+[32m+[m[32m    cv2.imshow(window_name, frame)[m
+[32m+[m
+[32m+[m[32m    if cv2.waitKey(1) & 0xFF == ord('q'):[m
+[32m+[m[32m        break[m
+[32m+[m
+[32m+[m[32mcap.release()[m
+[32m+[m[32mcv2.destroyAllWindows()[m
+\ No newline at end of file[m
