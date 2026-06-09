@@ -1,5 +1,5 @@
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(_file_), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from database.db import init_db
 from database.db_queries import add_admin
 
@@ -13,5 +13,5 @@ def main():
     else:
         print("Username taken.")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
