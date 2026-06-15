@@ -221,3 +221,4 @@ data/embeddings/
 *.db
 __pycache__/
 .env
+.env
