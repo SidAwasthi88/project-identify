@@ -1,3 +1,6 @@
+# Administrator One
+# admin1
+# password1
 import streamlit as st, sys, os, pandas as pd
 sys.path.append(os.path.dirname(__file__))
 from database.db import init_db
