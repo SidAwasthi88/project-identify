@@ -18,7 +18,7 @@ while True:
         for feature, points in face.items():
             for point in points:
                 cv2.circle(frame, point, 2, (0, 255, 0), -1)
-    # If there are two people in the frame, this loop runs twice.
+    # If there are n people in the frame, this loop runs n times
 
     cv2.imshow("Landmark Detection", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
