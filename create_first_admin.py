@@ -1,10 +1,18 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+from mysql.connector.errors import Error as MySQLError
 from database.db import init_db
 from database.db_queries import add_admin
 
 def main():
-    init_db()
+    try:
+        init_db()
+    except MySQLError as e:
+        print("❌ Could not connect to MySQL.")
+        print(f"   Details: {e}")
+        print("   Check that MySQL is running and that the credentials in src/database/db.py are correct.")
+        return
+
     username = input("Admin username: ").strip()
     fullname = input("Full name: ").strip()
     password = input("Password: ").strip()
