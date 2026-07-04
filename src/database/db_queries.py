@@ -1,118 +1,343 @@
 import hashlib
+import mysql.connector
+from mysql.connector.errors import IntegrityError
 from .db import get_connection
 
-def hash_password(p):
-    return hashlib.sha256(p.encode()).hexdigest()
+# ─────────────────────────────────────────────
+# PASSWORD HASHING
+# ─────────────────────────────────────────────
 
-def verify_password(p, h):
-    return hash_password(p) == h
+def hash_password(password: str) -> str:
+    """Hashes a password using SHA-256."""
+    return hashlib.sha256(password.encode()).hexdigest()
 
-def add_admin(u, p, n, cb=None):
-    conn = get_connection(); c = conn.cursor()
+def verify_password(password: str, hashed: str) -> bool:
+    """Returns True if the password matches the stored hash."""
+    return hash_password(password) == hashed
+
+# ─────────────────────────────────────────────
+# ADMIN QUERIES
+# ─────────────────────────────────────────────
+
+def add_admin(username: str, password: str, full_name: str, created_by: int = None):
+    conn = get_connection()
+    cursor = conn.cursor()
     try:
-        c.execute("INSERT INTO admins (username, password_hash, full_name, created_by) VALUES (%s,%s,%s,%s)",
-                  (u, hash_password(p), n, cb))
-        conn.commit(); return True
-    except: return False
-    finally: c.close(); conn.close()
-
-def login_admin(u, p):
-    conn = get_connection(); c = conn.cursor(dictionary=True)
-    c.execute("SELECT * FROM admins WHERE username=%s", (u,))
-    r = c.fetchone(); c.close(); conn.close()
-    return r if r and verify_password(p, r['password_hash']) else None
-
-def add_subject(code, title, prog, yr, sem, aid):
-    conn = get_connection(); c = conn.cursor()
-    c.execute("INSERT INTO subjects (course_code, course_title, program, year, semester, admin_id) VALUES (%s,%s,%s,%s,%s,%s)",
-              (code, title, prog, yr, sem, aid))
-    conn.commit(); c.close(); conn.close()
-
-def get_subjects_by_admin(aid):
-    conn = get_connection(); c = conn.cursor(dictionary=True)
-    c.execute("SELECT * FROM subjects WHERE admin_id=%s", (aid,))
-    r = c.fetchall(); c.close(); conn.close()
-    return r
-
-def add_student(reg, ln, fn, mn, g, prog, yr, sem):
-    conn = get_connection(); c = conn.cursor()
-    try:
-        c.execute("INSERT INTO students (reg_no, last_name, first_name, middle_name, gender, program, year, semester) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                  (reg, ln, fn, mn, g, prog, yr, sem))
+        cursor.execute(
+            "INSERT INTO admins (username, password_hash, full_name, created_by) VALUES (%s, %s, %s, %s)",
+            (username, hash_password(password), full_name, created_by)
+        )
         conn.commit()
-        c2 = conn.cursor(dictionary=True)
-        c2.execute("SELECT id FROM students WHERE program=%s AND year=%s AND semester=%s ORDER BY reg_no", (prog, yr, sem))
-        for i, s in enumerate(c2.fetchall(), 1):
-            c.execute("UPDATE students SET roll_no=%s WHERE id=%s", (i, s['id']))
-        conn.commit(); c2.close()
         return True
-    except: return False
-    finally: c.close(); conn.close()
+    except IntegrityError:
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_admin_by_username(username: str):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM admins WHERE username = %s", (username,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row
+
+def get_all_admins():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, full_name, created_at FROM admins")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
+
+def login_admin(username: str, password: str):
+    admin = get_admin_by_username(username)
+    if admin and verify_password(password, admin['password_hash']):
+        return admin
+    return None
+
+# ─────────────────────────────────────────────
+# SUBJECT QUERIES
+# ─────────────────────────────────────────────
+
+def add_subject(course_code: str, course_title: str, program: str, year: str, semester: str, admin_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO subjects (course_code, course_title, program, year, semester, admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
+        (course_code, course_title, program, year, semester, admin_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def remove_subject(subject_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM subjects WHERE id = %s", (subject_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_subjects_by_admin(admin_id: int):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM subjects WHERE admin_id = %s", (admin_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
+
+def get_all_subjects():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT s.*, a.full_name as admin_name
+        FROM subjects s
+        JOIN admins a ON s.admin_id = a.id
+    """)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
+
+# ─────────────────────────────────────────────
+# STUDENT QUERIES
+# ─────────────────────────────────────────────
+
+def add_student(reg_no, last_name, first_name, middle_name, gender, program, year, semester):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO students (reg_no, last_name, first_name, middle_name, gender, program, year, semester)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (reg_no, last_name, first_name, middle_name, gender, program, year, semester))
+        conn.commit()
+        assign_roll_numbers(program, year, semester)
+        return True
+    except IntegrityError:
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def remove_student(student_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM students WHERE id = %s", (student_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def assign_roll_numbers(program: str, year: str, semester: str):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT id FROM students
+        WHERE program = %s AND year = %s AND semester = %s
+        ORDER BY reg_no ASC
+    """, (program, year, semester))
+    students = cursor.fetchall()
+
+    for i, student in enumerate(students, start=1):
+        cursor.execute("UPDATE students SET roll_no = %s WHERE id = %s", (i, student['id']))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_students_by_group(program: str, year: str, semester: str):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT * FROM students
+        WHERE program = %s AND year = %s AND semester = %s
+        ORDER BY reg_no ASC
+    """, (program, year, semester))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
 
 def get_all_students():
-    conn = get_connection(); c = conn.cursor(dictionary=True)
-    c.execute("SELECT * FROM students ORDER BY reg_no ASC")
-    r = c.fetchall(); c.close(); conn.close()
-    return r
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT * FROM students
+        ORDER BY program, year, semester, reg_no ASC
+    """)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
 
-def get_student_by_id(sid):
-    conn = get_connection(); c = conn.cursor(dictionary=True)
-    c.execute("SELECT * FROM students WHERE id=%s", (sid,))
-    r = c.fetchone(); c.close(); conn.close()
-    return r
+def get_student_by_id(student_id: int):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row
 
-def mark_face_enrolled(sid):
-    conn = get_connection(); c = conn.cursor()
-    c.execute("UPDATE students SET face_enrolled=1 WHERE id=%s", (sid,))
-    conn.commit(); c.close(); conn.close()
+def mark_face_enrolled(student_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE students SET face_enrolled = 1 WHERE id = %s", (student_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-def enroll_student_in_subject(sub_id, stu_id):
-    conn = get_connection(); c = conn.cursor()
+# ─────────────────────────────────────────────
+# SUBJECT-STUDENT ENROLLMENT
+# ─────────────────────────────────────────────
+
+def enroll_student_in_subject(subject_id: int, student_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
     try:
-        c.execute("INSERT INTO subject_students (subject_id, student_id) VALUES (%s,%s)", (sub_id, stu_id))
-        conn.commit(); return True
-    except: return False
-    finally: c.close(); conn.close()
+        cursor.execute(
+            "INSERT INTO subject_students (subject_id, student_id) VALUES (%s, %s)",
+            (subject_id, student_id)
+        )
+        conn.commit()
+        return True
+    except IntegrityError:
+        return False
+    finally:
+        cursor.close()
+        conn.close()
 
-def get_students_in_subject(sub_id):
-    conn = get_connection(); c = conn.cursor(dictionary=True)
-    c.execute("SELECT s.* FROM students s JOIN subject_students ss ON s.id=ss.student_id WHERE ss.subject_id=%s ORDER BY s.reg_no", (sub_id,))
-    r = c.fetchall(); c.close(); conn.close()
-    return r
+def remove_student_from_subject(subject_id: int, student_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM subject_students WHERE subject_id = %s AND student_id = %s",
+        (subject_id, student_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-def start_session(sub_id, aid, date, time):
-    conn = get_connection(); c = conn.cursor()
-    c.execute("INSERT INTO sessions (subject_id, admin_id, date, start_time) VALUES (%s,%s,%s,%s)", (sub_id, aid, date, time))
-    conn.commit(); sid = c.lastrowid; c.close(); conn.close()
-    return sid
+def get_students_in_subject(subject_id: int):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT s.*
+        FROM students s
+        JOIN subject_students ss ON s.id = ss.student_id
+        WHERE ss.subject_id = %s
+        ORDER BY s.reg_no ASC
+    """, (subject_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
 
-def end_session(sid, time):
-    conn = get_connection(); c = conn.cursor()
-    c.execute("UPDATE sessions SET end_time=%s WHERE id=%s", (time, sid))
-    conn.commit(); c.close(); conn.close()
+# ─────────────────────────────────────────────
+# SESSION QUERIES
+# ─────────────────────────────────────────────
 
-def mark_attendance(session_id, student_id, status, marked_by='manual'):
-    conn = get_connection(); c = conn.cursor()
-    c.execute("""INSERT INTO attendance (session_id, student_id, status, marked_by) VALUES (%s,%s,%s,%s)
-                 ON DUPLICATE KEY UPDATE status=VALUES(status), marked_by=VALUES(marked_by)""",
-              (session_id, student_id, status, marked_by))
-    conn.commit(); c.close(); conn.close()
+def start_session(subject_id: int, admin_id: int, date: str, start_time: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO sessions (subject_id, admin_id, date, start_time) VALUES (%s, %s, %s, %s)",
+        (subject_id, admin_id, date, start_time)
+    )
+    session_id = cursor.lastrowid
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return session_id
 
-def get_attendance_for_session(sid):
-    conn = get_connection(); c = conn.cursor(dictionary=True)
-    c.execute("""SELECT s.reg_no, s.roll_no, CONCAT(s.last_name,' ',s.first_name,' ',COALESCE(s.middle_name,'')) AS full_name,
-                 a.status, a.marked_by, a.marked_at FROM attendance a
-                 JOIN students s ON a.student_id=s.id WHERE a.session_id=%s ORDER BY s.reg_no""", (sid,))
-    r = c.fetchall(); c.close(); conn.close()
-    return r
+def end_session(session_id: int, end_time: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE sessions SET end_time = %s WHERE id = %s", (end_time, session_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-def get_attendance_by_subject(sub_id):
-    conn = get_connection(); c = conn.cursor(dictionary=True)
-    c.execute("""SELECT ss.date, ss.start_time, s.reg_no, s.roll_no,
-                 CONCAT(s.last_name,' ',s.first_name,' ',COALESCE(s.middle_name,'')) AS full_name,
-                 a.status, a.marked_by FROM attendance a
-                 JOIN sessions ss ON a.session_id=ss.id
-                 JOIN students s ON a.student_id=s.id
-                 WHERE ss.subject_id=%s ORDER BY ss.date DESC, s.reg_no""", (sub_id,))
-    r = c.fetchall(); c.close(); conn.close()
-    return r
+def get_active_session(subject_id: int):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT * FROM sessions
+        WHERE subject_id = %s AND end_time IS NULL
+        ORDER BY id DESC LIMIT 1
+    """, (subject_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row
+
+def get_sessions_by_subject(subject_id: int):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM sessions WHERE subject_id = %s ORDER BY date DESC, start_time DESC",
+        (subject_id,)
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
+
+# ─────────────────────────────────────────────
+# ATTENDANCE QUERIES
+# ─────────────────────────────────────────────
+
+def mark_attendance(session_id: int, student_id: int, status: str, marked_by: str = 'manual'):
+    conn = get_connection()
+    cursor = conn.cursor()
+    # MySQL's equivalent of SQLite's "ON CONFLICT ... DO UPDATE" is "ON DUPLICATE KEY UPDATE".
+    # It relies on the UNIQUE(session_id, student_id) constraint on the attendance table.
+    cursor.execute("""
+        INSERT INTO attendance (session_id, student_id, status, marked_by)
+        VALUES (%s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE status = VALUES(status), marked_by = VALUES(marked_by)
+    """, (session_id, student_id, status, marked_by))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_attendance_for_session(session_id: int):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    # SQLite's `||` string concatenation becomes MySQL's CONCAT(...)
+    cursor.execute("""
+        SELECT s.reg_no, s.roll_no,
+               CONCAT(s.last_name, ' ', s.first_name, ' ', COALESCE(s.middle_name, '')) AS full_name,
+               a.status, a.marked_by, a.marked_at
+        FROM attendance a
+        JOIN students s ON a.student_id = s.id
+        WHERE a.session_id = %s
+        ORDER BY s.reg_no ASC
+    """, (session_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
+
+def get_attendance_by_subject(subject_id: int):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT ss.date, ss.start_time, s.reg_no, s.roll_no,
+               CONCAT(s.last_name, ' ', s.first_name, ' ', COALESCE(s.middle_name, '')) AS full_name,
+               a.status, a.marked_by
+        FROM attendance a
+        JOIN sessions ss ON a.session_id = ss.id
+        JOIN students s ON a.student_id = s.id
+        WHERE ss.subject_id = %s
+        ORDER BY ss.date DESC, s.reg_no ASC
+    """, (subject_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows

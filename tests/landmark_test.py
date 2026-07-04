@@ -17,7 +17,7 @@ while True:
     for face in landmarks: # Loops through each detected face
         for feature, points in face.items():
             for point in points:
-                cv2.circle(frame, point, 2, (0, 255, 0), -1)
+                cv2.circle(frame, point, 2, (255, 0, 0), -1)
     # If there are n people in the frame, this loop runs n times
 
     cv2.imshow("Landmark Detection", frame)
