@@ -1,7 +1,6 @@
 import hashlib
-import mysql.connector
 from mysql.connector.errors import IntegrityError
-from .db import get_connection
+from .db import get_connection, fetch_one_dict, fetch_all_dict
 
 # ─────────────────────────────────────────────
 # PASSWORD HASHING
@@ -37,18 +36,18 @@ def add_admin(username: str, password: str, full_name: str, created_by: int = No
 
 def get_admin_by_username(username: str):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT * FROM admins WHERE username = %s", (username,))
-    row = cursor.fetchone()
+    row = fetch_one_dict(cursor)
     cursor.close()
     conn.close()
     return row
 
 def get_all_admins():
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT id, username, full_name, created_at FROM admins")
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
@@ -84,22 +83,22 @@ def remove_subject(subject_id: int):
 
 def get_subjects_by_admin(admin_id: int):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT * FROM subjects WHERE admin_id = %s", (admin_id,))
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
 
 def get_all_subjects():
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("""
         SELECT s.*, a.full_name as admin_name
         FROM subjects s
         JOIN admins a ON s.admin_id = a.id
     """)
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
@@ -135,13 +134,13 @@ def remove_student(student_id: int):
 
 def assign_roll_numbers(program: str, year: str, semester: str):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("""
         SELECT id FROM students
         WHERE program = %s AND year = %s AND semester = %s
         ORDER BY reg_no ASC
     """, (program, year, semester))
-    students = cursor.fetchall()
+    students = fetch_all_dict(cursor)
 
     for i, student in enumerate(students, start=1):
         cursor.execute("UPDATE students SET roll_no = %s WHERE id = %s", (i, student['id']))
@@ -152,34 +151,34 @@ def assign_roll_numbers(program: str, year: str, semester: str):
 
 def get_students_by_group(program: str, year: str, semester: str):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM students
         WHERE program = %s AND year = %s AND semester = %s
         ORDER BY reg_no ASC
     """, (program, year, semester))
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
 
 def get_all_students():
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM students
         ORDER BY program, year, semester, reg_no ASC
     """)
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
 
 def get_student_by_id(student_id: int):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
-    row = cursor.fetchone()
+    row = fetch_one_dict(cursor)
     cursor.close()
     conn.close()
     return row
@@ -225,7 +224,7 @@ def remove_student_from_subject(subject_id: int, student_id: int):
 
 def get_students_in_subject(subject_id: int):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("""
         SELECT s.*
         FROM students s
@@ -233,7 +232,7 @@ def get_students_in_subject(subject_id: int):
         WHERE ss.subject_id = %s
         ORDER BY s.reg_no ASC
     """, (subject_id,))
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
@@ -265,25 +264,25 @@ def end_session(session_id: int, end_time: str):
 
 def get_active_session(subject_id: int):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM sessions
         WHERE subject_id = %s AND end_time IS NULL
         ORDER BY id DESC LIMIT 1
     """, (subject_id,))
-    row = cursor.fetchone()
+    row = fetch_one_dict(cursor)
     cursor.close()
     conn.close()
     return row
 
 def get_sessions_by_subject(subject_id: int):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute(
         "SELECT * FROM sessions WHERE subject_id = %s ORDER BY date DESC, start_time DESC",
         (subject_id,)
     )
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
@@ -308,7 +307,7 @@ def mark_attendance(session_id: int, student_id: int, status: str, marked_by: st
 
 def get_attendance_for_session(session_id: int):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     # SQLite's `||` string concatenation becomes MySQL's CONCAT(...)
     cursor.execute("""
         SELECT s.reg_no, s.roll_no,
@@ -319,14 +318,14 @@ def get_attendance_for_session(session_id: int):
         WHERE a.session_id = %s
         ORDER BY s.reg_no ASC
     """, (session_id,))
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
 
 def get_attendance_by_subject(subject_id: int):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("""
         SELECT ss.date, ss.start_time, s.reg_no, s.roll_no,
                CONCAT(s.last_name, ' ', s.first_name, ' ', COALESCE(s.middle_name, '')) AS full_name,
@@ -337,7 +336,7 @@ def get_attendance_by_subject(subject_id: int):
         WHERE ss.subject_id = %s
         ORDER BY ss.date DESC, s.reg_no ASC
     """, (subject_id,))
-    rows = cursor.fetchall()
+    rows = fetch_all_dict(cursor)
     cursor.close()
     conn.close()
     return rows
