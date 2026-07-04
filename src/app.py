@@ -16,6 +16,7 @@ from database.db_queries import (
 )
 from dashboard.session import begin_session, close_session, process_student_scan, manually_mark_student
 from dashboard.export import export_subject_attendance_csv, export_session_attendance_csv
+from recognition.camera_test import run_camera_test
 from enrollment.enroll_student import enroll_new_student, get_group_label
 from enrollment.enroll_face import enroll_face_for_student
 
@@ -72,6 +73,7 @@ def show_sidebar():
             "📚 My Subjects",
             "👥 Students",
             "📷 Attendance Session",
+            "🎥 Camera Test",  
             "📊 View Attendance",
             "⚙️ Admin Settings"
         ])
@@ -237,12 +239,12 @@ def show_students():
 
             if st.button("📷 Capture Webcam Facial Target"):
                 with st.spinner("Engaging high-definition camera array modules..."):
-                    success = enroll_face_for_student(student_id)
+                    success, message = enroll_face_for_student(student_id)
                 if success:
-                    st.success("Mathematical encoding profile bound securely!")
+                    st.success(message)
                     st.rerun()
                 else:
-                    st.error("Webcam detection structural mapping failure.")
+                    st.error(message)
 
         if already_enrolled:
             st.divider()
@@ -387,6 +389,15 @@ def show_admin_settings():
             else:
                 st.error("Identifier namespace collides with a pre-existing asset.")
 
+def show_camera_test():
+    st.title("🎥 Camera Test")
+    st.write("Opens a live window that names and boxes every recognized face. Press **Q** in that window to close it.")
+    if st.button("▶️ Launch Recognition Test"):
+        with st.spinner("Camera window is open — press Q in it when you're done..."):
+            success = run_camera_test()
+        if not success:
+            st.error("No enrolled faces found, or the webcam couldn't be opened.")
+
 def main():
     if not st.session_state.logged_in:
         show_login()
@@ -401,6 +412,8 @@ def main():
         show_students()
     elif page == "📷 Attendance Session":
         show_session()
+    elif page == "🎥 Camera Test":
+        show_camera_test()
     elif page == "📊 View Attendance":
         show_attendance()
     elif page == "⚙️ Admin Settings":
