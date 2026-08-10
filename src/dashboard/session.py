@@ -7,7 +7,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from database.db_queries import (
     start_session, end_session, mark_attendance, 
-    get_students_in_subject, get_attendance_for_session, login_admin
+    get_students_in_subject, get_attendance_for_session, login_admin,
+    get_session_by_id
 )
 from recognition.recognize import recognize_student
 
@@ -27,8 +28,9 @@ def begin_session(subject_id: int, admin_id: int, admin_username: str, password:
     
     # Pre-mark everyone as Absent initially
     students = get_students_in_subject(subject_id)
-    for student in students:
-        mark_attendance(session_id, student['id'], 'Absent', 'manual')
+    if students:
+        for student in students:
+            mark_attendance(session_id, student['id'], 'Absent', 'manual')
         
     return session_id
 
@@ -46,8 +48,19 @@ def determine_status(session_start_time: str) -> str:
     """Calculates if the student arrived within the allowed on-time threshold."""
     now = datetime.now()
     today = now.strftime("%Y-%m-%d")
-    start_dt = datetime.strptime(f"{today} {session_start_time}", "%Y-%m-%d %H:%M:%S")
-    diff = (now - start_dt).total_seconds() / 60
+    
+    # Handle if session_start_time is already string or formatted
+    if isinstance(session_start_time, str):
+        # Format defensively if seconds are missing
+        time_parts = session_start_time.split(':')
+        if len(time_parts) == 2:
+            session_start_time = f"{session_start_time}:00"
+            
+        start_dt = datetime.strptime(f"{today} {session_start_time}", "%Y-%m-%d %H:%M:%S")
+    else:
+        start_dt = session_start_time
+
+    diff = (now - start_dt).total_seconds() / 60.0
     return 'Late' if diff > LATE_THRESHOLD_MINUTES else 'Present'
 
 def process_student_scan(session_id: int, session_start_time: str, max_attempts: int = 2):
@@ -59,9 +72,20 @@ def process_student_scan(session_id: int, session_start_time: str, max_attempts:
             break
             
     if student_id:
+        # Check if the session exists and fetch course details to verify student enrollment
+        session_info = get_session_by_id(session_id) if 'get_session_by_id' in globals() else None
+        
+        if session_info and 'subject_id' in session_info:
+            subject_students = get_students_in_subject(session_info['subject_id'])
+            enrolled_ids = {s['id'] for s in subject_students}
+            if student_id not in enrolled_ids:
+                # Recognized student is not enrolled in this specific module
+                return None
+
         status = determine_status(session_start_time)
         mark_attendance(session_id, student_id, status, marked_by='face')
-        return student_id
+        return {"student_id": student_id, "status": status}
+        
     return None
 
 def manually_mark_student(session_id: int, student_id: int, status: str):
@@ -69,4 +93,5 @@ def manually_mark_student(session_id: int, student_id: int, status: str):
     mark_attendance(session_id, student_id, status, marked_by='manual')
 
 def get_session_attendance(session_id: int):
+    """Retrieves current attendance log for a session."""
     return get_attendance_for_session(session_id)

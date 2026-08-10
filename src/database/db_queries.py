@@ -262,6 +262,15 @@ def end_session(session_id: int, end_time: str):
     cursor.close()
     conn.close()
 
+def get_session_by_id(session_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM sessions WHERE id = %s", (session_id,))
+    row = fetch_one_dict(cursor)
+    cursor.close()
+    conn.close()
+    return row
+
 def get_active_session(subject_id: int):
     conn = get_connection()
     cursor = conn.cursor()
@@ -294,8 +303,6 @@ def get_sessions_by_subject(subject_id: int):
 def mark_attendance(session_id: int, student_id: int, status: str, marked_by: str = 'manual'):
     conn = get_connection()
     cursor = conn.cursor()
-    # MySQL's equivalent of SQLite's "ON CONFLICT ... DO UPDATE" is "ON DUPLICATE KEY UPDATE".
-    # It relies on the UNIQUE(session_id, student_id) constraint on the attendance table.
     cursor.execute("""
         INSERT INTO attendance (session_id, student_id, status, marked_by)
         VALUES (%s, %s, %s, %s)
@@ -308,10 +315,10 @@ def mark_attendance(session_id: int, student_id: int, status: str, marked_by: st
 def get_attendance_for_session(session_id: int):
     conn = get_connection()
     cursor = conn.cursor()
-    # SQLite's `||` string concatenation becomes MySQL's CONCAT(...)
     cursor.execute("""
         SELECT s.reg_no, s.roll_no,
-               CONCAT(s.last_name, ' ', s.first_name, ' ', COALESCE(s.middle_name, '')) AS full_name,
+               TRIM(CONCAT_WS(' ', s.first_name, s.middle_name, s.last_name)) AS full_name,
+               s.first_name, s.middle_name, s.last_name,
                a.status, a.marked_by, a.marked_at
         FROM attendance a
         JOIN students s ON a.student_id = s.id
@@ -328,7 +335,8 @@ def get_attendance_by_subject(subject_id: int):
     cursor = conn.cursor()
     cursor.execute("""
         SELECT ss.date, ss.start_time, s.reg_no, s.roll_no,
-               CONCAT(s.last_name, ' ', s.first_name, ' ', COALESCE(s.middle_name, '')) AS full_name,
+               TRIM(CONCAT_WS(' ', s.first_name, s.middle_name, s.last_name)) AS full_name,
+               s.first_name, s.middle_name, s.last_name,
                a.status, a.marked_by
         FROM attendance a
         JOIN sessions ss ON a.session_id = ss.id

@@ -5,21 +5,25 @@ import pickle
 import numpy as np
 from database.db_queries import mark_face_enrolled
 
+# ─────────────────────────────────────────────
+# CONFIGURATION & CONSTANTS
+# ─────────────────────────────────────────────
 ENCODINGS_DIR = os.path.join(os.path.dirname(__file__), '../../data/encodings')
 os.makedirs(ENCODINGS_DIR, exist_ok=True)
 
 TARGET_SAMPLES = 30
-RESIZE_SCALE = 0.25  # process a shrunk frame for speed, then scale coordinates back up
+RESIZE_SCALE = 0.25  # Downscaling factor for faster facial feature detection
 
 
 def _open_camera():
-    """Tries a couple of backends/indices so it's more likely to actually open on Linux/Windows."""
+    """Attempts to initialize webcam using common device indices and backends."""
     for index in (0, 1):
         cap = cv2.VideoCapture(index)
         if cap.isOpened():
             return cap
         cap.release()
-        # Try the explicit V4L2 backend, common fix on Linux
+        
+        # Explicit V4L2 fallback (often needed for Linux/Raspberry Pi environments)
         cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
         if cap.isOpened():
             return cap
@@ -28,91 +32,123 @@ def _open_camera():
 
 
 def _draw_landmarks(frame, landmarks, scale):
-    """Draws every facial landmark point as a small blue dot — the 'vector mapping' visualization."""
+    """Renders facial landmark feature vectors as blue points on the main frame."""
     for feature_points in landmarks.values():
         for (x, y) in feature_points:
-            x, y = int(x / scale), int(y / scale)
-            cv2.circle(frame, (x, y), 2, (255, 200, 0), -1)
+            pt_x, pt_y = int(x / scale), int(y / scale)
+            cv2.circle(frame, (pt_x, pt_y), 2, (255, 200, 0), -1)
 
 
 def enroll_face_for_student(student_id: int):
     """
-    Opens a live webcam window, shows face box + landmark points + a running
-    sample counter, and collects TARGET_SAMPLES encodings of a single face.
-    Rejects frames with zero or multiple faces (shows a warning instead).
-    Averages all collected encodings into one vector and saves it.
+    Launches webcam capture feed, detects faces, draws landmark markers,
+    and captures TARGET_SAMPLES unique face encodings for a student.
 
-    Returns (success: bool, message: str).
-    Press Q at any time to cancel early.
+    Averages encodings into a single array and saves as a .pkl file in data/encodings/.
+    Updates database status upon successful completion.
+    
+    Returns:
+        (bool, str): Success status and descriptive response message.
     """
     video_capture = _open_camera()
     if video_capture is None:
-        return False, "Could not open any webcam. Check that it's not in use by another app, and that you have camera permissions."
+        return False, "Could not open webcam. Ensure camera is connected and not in use."
 
     collected_encodings = []
-    window_name = "Face Enrollment - Press Q to cancel"
+    window_name = "Face Enrollment - Press Q to Cancel"
 
-    while len(collected_encodings) < TARGET_SAMPLES:
-        ret, frame = video_capture.read()
-        if not ret:
-            continue
+    try:
+        while len(collected_encodings) < TARGET_SAMPLES:
+            ret, frame = video_capture.read()
+            if not ret:
+                continue
 
-        frame = cv2.flip(frame, 1)  # mirror, feels natural
-        small_frame = cv2.resize(frame, (0, 0), fx=RESIZE_SCALE, fy=RESIZE_SCALE)
-        rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+            frame = cv2.flip(frame, 1)  # Mirror frame for intuitive user interaction
+            small_frame = cv2.resize(frame, (0, 0), fx=RESIZE_SCALE, fy=RESIZE_SCALE)
+            rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
-        face_locations = face_recognition.face_locations(rgb_small_frame)
-        status_text = ""
-        status_color = (0, 200, 0)
+            face_locations = face_recognition.face_locations(rgb_small_frame)
+            status_text = ""
+            status_color = (0, 180, 0)  # Green by default
 
-        if len(face_locations) == 0:
-            status_text = "No face detected"
-            status_color = (0, 0, 200)
+            if len(face_locations) == 0:
+                status_text = "No face detected - Position yourself in front of camera"
+                status_color = (0, 0, 200)
 
-        elif len(face_locations) > 1:
-            status_text = "Multiple faces detected - only one person at a time"
-            status_color = (0, 0, 200)
-            # Draw a box around every face found so the student can see the problem
-            for (top, right, bottom, left) in face_locations:
+            elif len(face_locations) > 1:
+                status_text = "Multiple faces detected - Please ensure only one person is in frame"
+                status_color = (0, 0, 200)
+                
+                # Outline every detected face in red to indicate error state
+                for (top, right, bottom, left) in face_locations:
+                    top, right, bottom, left = [int(v / RESIZE_SCALE) for v in (top, right, bottom, left)]
+                    cv2.rectangle(frame, (left, top), (right, bottom), status_color, 2)
+
+            else:
+                # Valid capture step: Exactly one face found
+                landmarks_list = face_recognition.face_landmarks(rgb_small_frame, face_locations)
+                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+
+                top, right, bottom, left = face_locations[0]
                 top, right, bottom, left = [int(v / RESIZE_SCALE) for v in (top, right, bottom, left)]
+                
+                # Draw main target box and feature points
                 cv2.rectangle(frame, (left, top), (right, bottom), status_color, 2)
 
-        else:
-            # Exactly one face - this is the good case
-            landmarks_list = face_recognition.face_landmarks(rgb_small_frame, face_locations)
-            face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+                if landmarks_list:
+                    _draw_landmarks(frame, landmarks_list[0], RESIZE_SCALE)
 
-            top, right, bottom, left = face_locations[0]
-            top, right, bottom, left = [int(v / RESIZE_SCALE) for v in (top, right, bottom, left)]
-            cv2.rectangle(frame, (left, top), (right, bottom), status_color, 2)
+                if face_encodings:
+                    collected_encodings.append(face_encodings[0])
 
-            if landmarks_list:
-                _draw_landmarks(frame, landmarks_list[0], RESIZE_SCALE)
+                status_text = f"Capturing Face Data: {len(collected_encodings)}/{TARGET_SAMPLES}"
 
-            if face_encodings:
-                collected_encodings.append(face_encodings[0])
+            # ─────────────────────────────────────────────
+            # OVERLAY HUD & PROGRESS BAR
+            # ─────────────────────────────────────────────
+            frame_height, frame_width = frame.shape[:2]
+            
+            # Top Status Banner
+            cv2.rectangle(frame, (0, 0), (frame_width, 40), status_color, cv2.FILLED)
+            cv2.putText(frame, status_text, (15, 26), cv2.FONT_HERSHEY_DUPLEX, 0.65, (255, 255, 255), 1)
 
-            status_text = f"Captured {len(collected_encodings)}/{TARGET_SAMPLES}"
+            # Bottom Progress Indicator
+            progress_pct = len(collected_encodings) / TARGET_SAMPLES
+            progress_width = int(frame_width * progress_pct)
+            cv2.rectangle(frame, (0, frame_height - 10), (progress_width, frame_height), (0, 255, 0), cv2.FILLED)
 
-        # Status banner at the top of the frame
-        cv2.rectangle(frame, (0, 0), (frame.shape[1], 40), status_color, cv2.FILLED)
-        cv2.putText(frame, status_text, (10, 27), cv2.FONT_HERSHEY_DUPLEX, 0.7, (255, 255, 255), 1)
+            cv2.imshow(window_name, frame)
 
-        cv2.imshow(window_name, frame)
+            # Keyboard interrupt check (Q key)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                return False, "Enrollment cancelled by user."
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            video_capture.release()
-            cv2.destroyAllWindows()
-            return False, "Enrollment cancelled."
+    finally:
+        # Guarantee resources are cleaned up regardless of loop termination
+        video_capture.release()
+        cv2.destroyAllWindows()
 
-    video_capture.release()
-    cv2.destroyAllWindows()
+    # ─────────────────────────────────────────────
+    # ENCODING PROCESSING & PERSISTENCE
+    # ─────────────────────────────────────────────
+    if len(collected_encodings) == TARGET_SAMPLES:
+        # Calculate mean feature vector across all collected samples
+        averaged_encoding = np.mean(collected_encodings, axis=0)
+        filepath = os.path.join(ENCODINGS_DIR, f"{student_id}.pkl")
+        
+        with open(filepath, 'wb') as f:
+            pickle.dump(averaged_encoding, f)
 
-    # Average all 30 samples into a single, more robust encoding
-    averaged_encoding = np.mean(collected_encodings, axis=0)
-    filepath = os.path.join(ENCODINGS_DIR, f"{student_id}.pkl")
-    with open(filepath, 'wb') as f:
-        pickle.dump(averaged_encoding, f)
+        # Record enrollment flag in database
+        mark_face_enrolled(student_id)
+        return True, f"Enrollment successful! {TARGET_SAMPLES} face vectors collected and compiled."
 
-    mark_face_enrolled(student_id)
-    return True, f"Enrollment complete - {TARGET_SAMPLES} samples captured and averaged."
+    return False, "Enrollment incomplete."
+
+
+if __name__ == "__main__":
+    # Standard standalone test runner
+    test_student_id = 1
+    print(f"Testing Face Enrollment module for Student ID: {test_student_id}")
+    success, message = enroll_face_for_student(test_student_id)
+    print(f"Result: {message}")

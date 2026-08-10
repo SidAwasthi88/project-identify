@@ -5,9 +5,7 @@ import os
 
 # ─────────────────────────────────────────────
 # CONNECTION CONFIG
-# Edit these to match your MySQL server, or set them as
-# environment variables (recommended so you're not committing
-# a password to your repo).
+# Matches MySQL server parameters with environment variable fallbacks.
 # ─────────────────────────────────────────────
 DB_CONFIG = {
     'host': os.environ.get('IDENTIFY_DB_HOST', 'localhost'),
@@ -20,16 +18,23 @@ DB_NAME = os.environ.get('IDENTIFY_DB_NAME', 'identify_db')
 
 def get_connection():
     """Returns a connection to the identify_db MySQL database."""
-    conn = mysql.connector.connect(database=DB_NAME, **DB_CONFIG)
-    return conn
+    try:
+        conn = mysql.connector.connect(database=DB_NAME, **DB_CONFIG)
+        return conn
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            print("❌ MySQL Error: Invalid username or password.")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            print(f"❌ MySQL Error: Database '{DB_NAME}' does not exist.")
+        else:
+            print(f"❌ MySQL Error: {err}")
+        raise err
 
 
 def fetch_one_dict(cursor):
     """
     Converts a single fetched row into a dict using the cursor's column names.
-    Driver-agnostic — works regardless of whether cursor(dictionary=True) is supported,
-    which avoids the 'dictionary is an invalid keyword argument' error some
-    mysql-connector installs throw.
+    Driver-agnostic — works regardless of mysql-connector version.
     """
     row = cursor.fetchone()
     if row is None:
@@ -41,6 +46,8 @@ def fetch_one_dict(cursor):
 def fetch_all_dict(cursor):
     """Converts all fetched rows into a list of dicts using the cursor's column names."""
     rows = cursor.fetchall()
+    if not rows:
+        return []
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns, row)) for row in rows]
 
@@ -48,11 +55,15 @@ def fetch_all_dict(cursor):
 def init_db():
     """Creates the database (if needed) and all tables (if they don't already exist)."""
     # Step 1: connect WITHOUT selecting a database yet, so we can create it if missing
-    conn = mysql.connector.connect(**DB_CONFIG)
-    cursor = conn.cursor()
-    cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
-    cursor.close()
-    conn.close()
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
+        cursor.close()
+        conn.close()
+    except mysql.connector.Error as err:
+        print(f"❌ Failed connecting to MySQL server: {err}")
+        return
 
     # Step 2: connect to the actual database and create tables
     conn = get_connection()
@@ -67,7 +78,7 @@ def init_db():
             full_name VARCHAR(255) NOT NULL,
             created_by INT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (created_by) REFERENCES admins(id)
+            FOREIGN KEY (created_by) REFERENCES admins(id) ON DELETE SET NULL
         ) ENGINE=InnoDB
     """)
 
@@ -81,7 +92,7 @@ def init_db():
             year ENUM('First', 'Second', 'Third', 'Fourth') NOT NULL,
             semester ENUM('First', 'Second') NOT NULL,
             admin_id INT NOT NULL,
-            FOREIGN KEY (admin_id) REFERENCES admins(id)
+            FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE
         ) ENGINE=InnoDB
     """)
 
@@ -109,8 +120,8 @@ def init_db():
             id INT AUTO_INCREMENT PRIMARY KEY,
             subject_id INT NOT NULL,
             student_id INT NOT NULL,
-            FOREIGN KEY (subject_id) REFERENCES subjects(id),
-            FOREIGN KEY (student_id) REFERENCES students(id),
+            FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+            FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
             UNIQUE(subject_id, student_id)
         ) ENGINE=InnoDB
     """)
@@ -124,8 +135,8 @@ def init_db():
             date VARCHAR(20) NOT NULL,
             start_time VARCHAR(20) NOT NULL,
             end_time VARCHAR(20),
-            FOREIGN KEY (subject_id) REFERENCES subjects(id),
-            FOREIGN KEY (admin_id) REFERENCES admins(id)
+            FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+            FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE
         ) ENGINE=InnoDB
     """)
 
@@ -138,18 +149,18 @@ def init_db():
             status ENUM('Present', 'Absent', 'Late') NOT NULL,
             marked_by ENUM('face', 'manual') DEFAULT 'manual',
             marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (session_id) REFERENCES sessions(id),
-            FOREIGN KEY (student_id) REFERENCES students(id),
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
             UNIQUE(session_id, student_id)
         ) ENGINE=InnoDB
     """)
 
     conn.commit()
 
-    # Seed a default admin account if none exists
+    # Seed default admin account if table is empty
     cursor.execute("SELECT COUNT(*) AS count FROM admins")
     row = fetch_one_dict(cursor)
-    if row['count'] == 0:
+    if row and row['count'] == 0:
         default_hash = hashlib.sha256('admin123'.encode()).hexdigest()
         cursor.execute("""
             INSERT INTO admins (username, password_hash, full_name, created_by)
