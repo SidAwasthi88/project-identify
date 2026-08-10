@@ -146,6 +146,24 @@ def enroll_face_for_student(student_id: int):
     return False, "Enrollment incomplete."
 
 
+# ─────────────────────────────────────────────
+# LOAD ENCODINGS FUNCTION (For Attendance)
+# ─────────────────────────────────────────────
+def load_face_encodings(student_id: int):
+    """
+    Load face encodings for a specific student from the data/encodings/ folder.
+    Returns a list of encodings, or None if not found.
+    """
+    filepath = os.path.join(ENCODINGS_DIR, f"{student_id}.pkl")
+    
+    if not os.path.exists(filepath):
+        return None
+    
+    with open(filepath, 'rb') as f:
+        encodings = pickle.load(f)
+    return encodings
+
+
 if __name__ == "__main__":
     # Standard standalone test runner
     test_student_id = 1

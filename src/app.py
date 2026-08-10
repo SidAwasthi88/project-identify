@@ -49,9 +49,9 @@ def get_image_path(filename: str) -> str | None:
     return None
 
 def format_student_name(student_dict: dict) -> str:
-    first = student_dict.get('first_name', '').strip()
-    middle = student_dict.get('middle_name', '').strip()
-    last = student_dict.get('last_name', '').strip()
+    first = (student_dict.get('first_name') or '').strip()
+    middle = (student_dict.get('middle_name') or '').strip()
+    last = (student_dict.get('last_name') or '').strip()
     if middle:
         return f"{first} {middle} {last}"
     return f"{first} {last}"
@@ -585,23 +585,24 @@ def show_session():
         session_id = st.session_state.active_session_id
         start_time = st.session_state.active_session_start
 
+        # --- CAMERA INSIDE STREAMLIT ---
+        st.markdown("""
+        <div style="background: rgba(255, 59, 48, 0.1); border: 1px solid #FF3B30; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
+            <h3 style="color:#FF3B30; margin:0;">SCANNER ARMED</h3>
+            <p style="color:white; margin:0; padding-top:4px;">Camera is active — faces will be detected automatically</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # --- START THE CAMERA INSIDE STREAMLIT ---
+        process_student_scan(session_id, start_time)
+
+        # --- MANUAL ATTENDANCE OVERRIDE ---
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.subheader("Manual Attendance Override")
+        
         c1, c2 = st.columns([1, 1])
         
         with c1:
-            warn_html = '<div style="background: rgba(255, 59, 48, 0.1); border: 1px solid #FF3B30; padding: 20px; border-radius: 12px; text-align: center;"><h3 style="color:#FF3B30; margin:0;">SCANNER ARMED</h3><p style="color:white; margin:0; padding-top:4px;">Awaiting Facial Biometric Input</p></div><br>'
-            st.markdown(warn_html, unsafe_allow_html=True)
-            
-            if st.button("TRIGGER VISUAL SCANNER", use_container_width=True):
-                with st.spinner("Processing facial vector..."):
-                    res = process_student_scan(session_id, start_time)
-                if res:
-                    st.success("Student recognized and attendance logged.")
-                    st.rerun()
-                else:
-                    st.error("Scan failed. Unrecognized face or student not enrolled in this course.")
-
-        with c2:
-            st.markdown("### Manual Attendance Override")
             enrolled_students = get_students_in_subject(st.session_state.active_subject_id)
             if enrolled_students:
                 opts = {f"{format_student_name(s)} ({s['reg_no']})": s['id'] for s in enrolled_students}
@@ -612,17 +613,17 @@ def show_session():
                     st.success("Attendance status manually updated.")
                     st.rerun()
 
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.subheader("Live Session Logs")
-        records = get_attendance_for_session(session_id)
-        if records:
-            formatted_records = []
-            for r in records:
-                r_copy = dict(r)
-                if 'first_name' in r_copy and 'last_name' in r_copy:
-                    r_copy['Student Name'] = format_student_name(r_copy)
-                formatted_records.append(r_copy)
-            st.dataframe(pd.DataFrame(formatted_records), use_container_width=True, hide_index=True)
+        with c2:
+            st.markdown("### Live Session Logs")
+            records = get_attendance_for_session(session_id)
+            if records:
+                formatted_records = []
+                for r in records:
+                    r_copy = dict(r)
+                    if 'first_name' in r_copy and 'last_name' in r_copy:
+                        r_copy['Student Name'] = format_student_name(r_copy)
+                    formatted_records.append(r_copy)
+                st.dataframe(pd.DataFrame(formatted_records), use_container_width=True, hide_index=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("end_session"):
@@ -670,13 +671,141 @@ def show_attendance():
 def show_camera_test():
     st.markdown("<h1>Camera Check</h1>", unsafe_allow_html=True)
     
-    test_html = '<div class="dash-card" style="border-left-color: #007AFF;"><h3 style="margin:0;">Run Camera Feed Test</h3><p style="color:#A0AAB5;">Tests camera input stream and displays face bounding boxes in real-time window. <b>Press \'Q\' to stop diagnostic feed.</b></p></div><br>'
-    st.markdown(test_html, unsafe_allow_html=True)
-    
-    if st.button("EXECUTE HARDWARE DIAGNOSTIC"):
-        with st.spinner("Initializing video stream connection..."):
-            if not run_camera_test():
-                st.error("Hardware Error: Camera device unreachable or disabled.")
+    st.markdown("""
+    <div class="dash-card" style="border-left-color: #007AFF;">
+        <h3 style="margin:0;">Camera Feed Test</h3>
+        <p style="color:#A0AAB5;">Click "Start" to begin face detection.</p>
+    </div>
+    <br>
+    """, unsafe_allow_html=True)
+
+    from streamlit_webrtc import webrtc_streamer
+    import av
+    import cv2
+    import face_recognition
+    from database.db_queries import get_all_students
+    from enrollment.enroll_face import load_face_encodings
+
+    # --- LOAD ALL STUDENT ENCODINGS ONCE ---
+    @st.cache_data
+    def load_all_student_encodings():
+        students = get_all_students()
+        student_data = []
+        for s in students:
+            enc = load_face_encodings(s['id'])
+            if enc is not None:
+                student_data.append({
+                    'id': s['id'],
+                    'reg_no': s['reg_no'],
+                    'first_name': s['first_name'],
+                    'last_name': s['last_name'],
+                    'encoding': enc
+                })
+        return student_data
+
+    student_data = load_all_student_encodings()
+
+    # --- CONFIG ---
+    FRAME_SKIP = 3
+    SCALE_FACTOR = 0.5
+    UPSAMPLE = 0
+    frame_counter = 0
+
+    def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+        nonlocal frame_counter
+        frame_counter += 1
+
+        img = frame.to_ndarray(format="bgr24")
+
+        # --- MIRROR ---
+        img = cv2.flip(img, 1)
+
+        # Process every few frames
+        if frame_counter % FRAME_SKIP == 0:
+            # Downscale for speed
+            small = cv2.resize(img, (0, 0), fx=SCALE_FACTOR, fy=SCALE_FACTOR)
+            rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+
+            # Detect faces
+            locations = face_recognition.face_locations(rgb, number_of_times_to_upsample=UPSAMPLE)
+            encodings = face_recognition.face_encodings(rgb, locations)
+
+            # Draw rectangles and display names
+            for (top, right, bottom, left), face_encoding in zip(locations, encodings):
+                # Scale back to original size
+                top, right, bottom, left = [int(v / SCALE_FACTOR) for v in (top, right, bottom, left)]
+
+                # Default: Unknown
+                name = "Unknown"
+                reg_no = ""
+
+                # Compare with all enrolled students
+                for student in student_data:
+                    matches = face_recognition.compare_faces([student['encoding']], face_encoding, tolerance=0.5)
+                    if True in matches:
+                        name = f"{student['first_name']} {student['last_name']}"
+                        reg_no = student['reg_no']
+                        break
+
+                # Draw green rectangle
+                cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)
+
+                # Draw name and roll number above the face
+                if reg_no:
+                    label = f"{name} ({reg_no})"
+                    cv2.putText(img, label, (left, top - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                else:
+                    cv2.putText(img, "Unknown", (left, top - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
+            # Show face count
+            cv2.putText(img, f"Faces: {len(locations)}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+    # --- SMALL CAMERA BOX ---
+    col1, col2, col3 = st.columns([1, 2, 1])
+
+    with col2:
+        st.markdown("""
+        <style>
+            .stVideo video {
+                width: 350px !important;
+                height: 280px !important;
+                max-width: 350px !important;
+                max-height: 280px !important;
+                border-radius: 12px !important;
+                border: 2px solid rgba(212, 175, 55, 0.4) !important;
+                object-fit: cover !important;
+            }
+            .stVideo {
+                width: 350px !important;
+                height: 280px !important;
+                max-width: 350px !important;
+                max-height: 280px !important;
+            }
+            .stVideo > div {
+                width: 350px !important;
+                height: 280px !important;
+                max-width: 350px !important;
+                max-height: 280px !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+        webrtc_streamer(
+            key="camera-test-final-mirror",
+            video_frame_callback=video_frame_callback,
+            media_stream_constraints={
+                "video": {"width": {"ideal": 320}, "height": {"ideal": 240}},
+                "audio": False
+            },
+            rtc_configuration={
+                "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+            }
+        )
 
 # --- PAGE: ADMIN SETTINGS ---
 def show_admin_settings():

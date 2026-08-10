@@ -29,8 +29,7 @@ def enroll_new_student(
     gender: str,
     program: str,
     year: str,
-    semester: str,
-    roll_no: int = None
+    semester: str
 ):
     """
     Validates, sanitizes, and registers a new student entry in the database.
@@ -44,7 +43,6 @@ def enroll_new_student(
         program (str): Academic Program (e.g., 'BBA', 'BBIS').
         year (str): Academic Year ('First', 'Second', 'Third', 'Fourth').
         semester (str): Academic Semester ('First', 'Second').
-        roll_no (int, optional): Specific numeric roll number if available.
 
     Returns:
         (bool, str, int): (Success status, Message, Student ID if created or None)
@@ -73,8 +71,7 @@ def enroll_new_student(
             gender=gender,
             program=program,
             year=year,
-            semester=semester,
-            roll_no=roll_no
+            semester=semester
         )
         group_tag = get_group_label(program, year, semester)
         return True, f"Student '{first_name} {last_name}' ({reg_no}) enrolled successfully in {group_tag}!", student_id
