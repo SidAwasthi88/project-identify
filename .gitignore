@@ -27,3 +27,4 @@ venv/
 *.csv
 attendance_subject_*.csv
 attendance_session_*.csv
+tempCodeRunnerFile.py
