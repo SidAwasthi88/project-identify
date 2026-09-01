@@ -1,8 +1,6 @@
 import sys
 import os
 from datetime import datetime
-import cv2
-import face_recognition
 import pickle
 import streamlit as st
 
@@ -88,10 +86,11 @@ def process_student_scan(session_id: int, session_start_time: str):
     """
     Uses streamlit-webrtc to show camera inside Streamlit and mark attendance.
     """
-    from streamlit_webrtc import webrtc_streamer
-    import av
+    # --- HEAVY IMPORTS MOVED INSIDE ---
     import cv2
     import face_recognition
+    from streamlit_webrtc import webrtc_streamer
+    import av
     from database.db_queries import get_students_in_subject, mark_attendance, get_session_by_id
     from enrollment.enroll_face import load_face_encodings
     from datetime import datetime
@@ -99,7 +98,7 @@ def process_student_scan(session_id: int, session_start_time: str):
 
     session_info = get_session_by_id(session_id)
     if not session_info:
-        st.error("❌ Session not found.")
+        st.error("Session not found.")
         return None
 
     subject_students = get_students_in_subject(session_info['subject_id'])
@@ -121,15 +120,15 @@ def process_student_scan(session_id: int, session_start_time: str):
             }
 
     if not student_encodings:
-        st.warning("❌ No face encodings found for enrolled students. Please enroll faces first.")
+        st.warning("No face encodings found for enrolled students. Please enroll faces first.")
         return None
 
     marked_students = set()
     frame_counter = 0
-    FRAME_SKIP = 5  # Process every 5th frame (faster)
+    FRAME_SKIP = 5
     SCALE_FACTOR = 0.5
     UPSAMPLE = 0
-    TOLERANCE = 0.4  # STRICTER matching (lower = more accurate)
+    TOLERANCE = 0.4
 
     # --- SESSION STATE TO CONTROL CAMERA ---
     if 'camera_running' not in st.session_state:
@@ -156,23 +155,19 @@ def process_student_scan(session_id: int, session_start_time: str):
                 student_name = "Unknown"
                 student_reg = ""
                 best_match_id = None
-                best_match_distance = 1.0  # Lower is better
+                best_match_distance = 1.0
 
-                # Find the BEST match (lowest distance)
                 for student_id, known_encoding in student_encodings.items():
                     if student_id in marked_students:
                         continue
                     matches = face_recognition.compare_faces([known_encoding], face_encoding, tolerance=TOLERANCE)
                     if True in matches:
-                        # Calculate distance
                         distance = face_recognition.face_distance([known_encoding], face_encoding)[0]
                         if distance < best_match_distance:
                             best_match_distance = distance
                             best_match_id = student_id
 
-                # Only mark if we found a good match
                 if best_match_id is not None:
-                    # Mark attendance
                     now = datetime.now()
                     status = determine_status(session_start_time)
                     mark_attendance(session_id, best_match_id, status, marked_by='face')
@@ -181,17 +176,14 @@ def process_student_scan(session_id: int, session_start_time: str):
                     student_name = f"{info['first_name']} {info['last_name']}"
                     student_reg = info['reg_no']
                     recognized = True
-                    st.success(f"✅ Marked present: {student_name} ({student_reg})")
+                    st.success(f"Marked present: {student_name} ({student_reg})")
 
-                # Draw rectangle
                 cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)
 
-                # Show "Hi, Student Name" or "Unknown"
                 if recognized:
                     label = f"Hi, {student_name}"
                 else:
                     label = "Unknown"
-                    # Check if this face matches any enrolled student (not yet marked)
                     for student_id, known_encoding in student_encodings.items():
                         matches = face_recognition.compare_faces([known_encoding], face_encoding, tolerance=TOLERANCE)
                         if True in matches:
@@ -250,6 +242,8 @@ def process_student_scan(session_id: int, session_start_time: str):
         )
 
     return True
+
+
 # ─────────────────────────────────────────────
 # MANUAL ATTENDANCE OVERRIDE
 # ─────────────────────────────────────────────

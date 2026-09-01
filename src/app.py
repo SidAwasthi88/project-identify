@@ -1,9 +1,12 @@
 import streamlit as st
+
+
 import sys
 import os
 import pandas as pd
 import base64
 from datetime import datetime
+
 
 # --- PATH RESOLUTION ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,6 +14,7 @@ if CURRENT_DIR not in sys.path:
     sys.path.append(CURRENT_DIR)
 
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+
 
 from database.db import init_db
 from database.db_queries import (
@@ -20,14 +24,18 @@ from database.db_queries import (
     enroll_student_in_subject, remove_student_from_subject, get_students_in_subject,
     get_attendance_by_subject, get_attendance_for_session
 )
+
 from dashboard.session import begin_session, close_session, process_student_scan, manually_mark_student
 from dashboard.export import export_subject_attendance_csv, export_session_attendance_csv
-from recognition.camera_test import run_camera_test
-from enrollment.enroll_student import enroll_new_student, get_group_label
-from enrollment.enroll_face import enroll_face_for_student
+
+
+# --- RECOGNITION IMPORTS MOVED INSIDE FUNCTIONS ---
+# (run_camera_test, enroll_new_student, get_group_label, enroll_face_for_student)
+
 
 # Initialize Database Schema
 init_db()
+
 
 st.set_page_config(
     page_title="KUSOM Portal | Project Identify", 
@@ -35,6 +43,7 @@ st.set_page_config(
     layout="wide", 
     initial_sidebar_state="expanded"
 )
+
 
 # --- HELPER FUNCTIONS ---
 def get_image_path(filename: str) -> str | None:
@@ -56,6 +65,7 @@ def format_student_name(student_dict: dict) -> str:
         return f"{first} {middle} {last}"
     return f"{first} {last}"
 
+
 # --- SESSION STATE INITIALIZATION ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -67,6 +77,7 @@ if 'active_session_start' not in st.session_state:
     st.session_state.active_session_start = None
 if 'active_subject_id' not in st.session_state:
     st.session_state.active_subject_id = None
+
 
 # --- INJECT CSS CONDITIONALLY ---
 def inject_custom_css():
@@ -294,6 +305,7 @@ def inject_custom_css():
     else:
         st.markdown(base_css, unsafe_allow_html=True)
 
+
 # --- PAGE: LOGIN ---
 def show_login():
     col1, col2, col3 = st.columns([1, 1.2, 1])
@@ -324,6 +336,7 @@ def show_login():
                     st.rerun()
                 else:
                     st.error("Authentication failed. Invalid username or passphrase.")
+
 
 # --- NAVIGATION & HEADER ---
 def show_header_and_sidebar():
@@ -360,11 +373,12 @@ def show_header_and_sidebar():
 
     return page
 
+
 # --- PAGE: DASHBOARD ---
 def show_dashboard():
     admin = st.session_state.admin
     st.markdown("<h1>Command Center</h1>", unsafe_allow_html=True)
-    st.write("Real-time telemetry and active course overview.")
+    
     st.markdown("<br>", unsafe_allow_html=True)
 
     subjects = get_subjects_by_admin(admin['id'])
@@ -395,6 +409,7 @@ def show_dashboard():
             with grid_cols[idx % 2]:
                 card_html = '<div class="dash-card" style="border-left: 2px solid rgba(212, 175, 55, 0.4); margin-bottom: 15px;"><div style="display: flex; justify-content: space-between;"><h4 style="margin: 0; color: #FFFFFF;">' + s['course_code'] + '</h4><span style="background: rgba(212, 175, 55, 0.2); color: #D4AF37; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem;">' + s['program'] + '</span></div><p style="margin: 5px 0 0 0; color: #E2E8F0; font-size: 1.05rem;">' + s['course_title'] + '</p><p style="margin: 8px 0 0 0; color: #94A3B8; font-size: 0.85rem;">Year ' + s['year'] + ' • Semester ' + s['semester'] + '</p></div>'
                 st.markdown(card_html, unsafe_allow_html=True)
+
 
 # --- PAGE: SUBJECTS ---
 def show_subjects():
@@ -476,84 +491,123 @@ def show_subjects():
             else:
                 st.info("All registered students are already in this course.")
 
+
 # --- PAGE: STUDENTS ---
 def show_students():
+    from database.db_queries import get_all_students, remove_student
+    
     st.markdown("<h1>Student Matrix</h1>", unsafe_allow_html=True)
-    tabs = st.tabs(["Active Directory", "Create Student Profile", "Biometric Facial Setup"])
-
-    with tabs[0]:
+    
+    # --- 3 TABS ---
+    tab1, tab2, tab3 = st.tabs(["Active Directory", "Create Student Profile", "Biometric Facial Setup"])
+    
+    # --- TAB 1: ACTIVE DIRECTORY ---
+    with tab1:
         students = get_all_students()
         if students:
-            groups = {}
+            data = []
             for s in students:
-                key = get_group_label(s['program'], s['year'] or '', s['semester'] or '')
-                groups.setdefault(key, []).append(s)
-
-            for group_label, group_students in groups.items():
-                st.markdown(f"### {group_label}")
-                df = pd.DataFrame([{
-                    'Registration ID': s['reg_no'],
+                data.append({
+                    'ID': s['id'],
+                    'Registration No': s.get('reg_no', ''),
                     'Full Name': format_student_name(s),
-                    'Gender': s['gender'],
-                    'Biometric Status': 'Verified' if s['face_enrolled'] else 'Pending'
-                } for s in group_students])
-                st.dataframe(df, use_container_width=True, hide_index=True)
-                st.markdown("<br>", unsafe_allow_html=True)
+                    'Gender': s.get('gender', ''),
+                    'Program': s.get('program', ''),
+                    'Year': s.get('year', ''),
+                    'Semester': s.get('semester', ''),
+                    'Face Status': 'Verified' if s.get('face_enrolled') else 'Pending'
+                })
+            df = pd.DataFrame(data)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.caption(f"Total Students: {len(students)}")
+            
+            # Delete student section
+            st.markdown("---")
+            st.subheader("Delete Student")
+            delete_options = {f"{s['reg_no']} - {format_student_name(s)}": s['id'] for s in students}
+            selected_to_delete = st.selectbox("Select Student to Delete", list(delete_options.keys()))
+            student_id_to_delete = delete_options[selected_to_delete]
+            if st.button("Delete Student", use_container_width=True):
+                import os
+                enc_file = os.path.join('data', 'encodings', f"{student_id_to_delete}.pkl")
+                if os.path.exists(enc_file):
+                    os.remove(enc_file)
+                result = remove_student(student_id_to_delete)
+                if result:
+                    st.success("Student deleted successfully.")
+                    st.rerun()
+                else:
+                    st.error("Failed to delete student.")
         else:
-            st.info("Registry empty. Use 'Create Student Profile' tab to enroll students.")
-
-    with tabs[1]:
+            st.info("No students found.")
+    
+    # --- TAB 2: CREATE STUDENT PROFILE (PASTE YOUR CODE HERE) ---
+    with tab2:
         with st.form("enroll_student_form"):
-            c1, c2, c3 = st.columns(3)
-            last_name = c1.text_input("Surname / Last Name").strip()
-            first_name = c2.text_input("First Name").strip()
-            middle_name = c3.text_input("Middle Name (Optional)").strip()
+            col1, col2, col3 = st.columns(3)
+            last_name = col1.text_input("Surname / Last Name *").strip()
+            first_name = col2.text_input("First Name *").strip()
+            middle_name = col3.text_input("Middle Name (Optional)").strip()
 
-            c4, c5 = st.columns(2)
-            reg_no = c4.text_input("Registration ID").strip()
-            gender = c5.selectbox("Gender", ["Male", "Female", "Other"])
+            col4, col5 = st.columns(2)
+            reg_no = col4.text_input("Registration ID *").strip()
+            gender = col5.selectbox("Gender", ["Male", "Female", "Other"])
             
-            c6, c7, c8 = st.columns(3)
-            program = c6.selectbox("Program", ["BBA", "BBIS", "MBA"])
-            year = c7.selectbox("Year", ["First", "Second", "Third", "Fourth"])
-            semester = c8.selectbox("Semester", ["First", "Second"])
+            col6, col7, col8 = st.columns(3)
+            program = col6.selectbox("Program", ["BBA", "BBIS", "MBA"])
+            year = col7.selectbox("Year", ["First", "Second", "Third", "Fourth"])
+            semester = col8.selectbox("Semester", ["First", "Second"])
             
-            st.markdown("<br>", unsafe_allow_html=True)
-            submitted = st.form_submit_button("SAVE PROFILE RECORD")
+            submitted = st.form_submit_button("Create Student Profile", use_container_width=True)
 
         if submitted:
             if not reg_no or not first_name or not last_name:
-                st.error("Please complete First Name, Surname, and Registration ID.")
+                st.error("Please complete all required fields.")
             else:
-                if enroll_new_student(reg_no, last_name, first_name, middle_name, gender, program, year, semester):
-                    st.success(f"Profile created for {first_name} {last_name}.")
+                from enrollment.enroll_student import enroll_new_student
+                result = enroll_new_student(reg_no, last_name, first_name, middle_name, gender, program, year, semester)
+                if result and result[0]:
+                    st.success(f"Student profile created for {first_name} {last_name}.")
                     st.rerun()
                 else:
-                    st.error("Registration ID already exists in system database.")
-
-    with tabs[2]:
-        st.markdown("### Facial Topology Calibration")
+                    st.error(result[1] if result and len(result) > 1 else "Registration ID already exists.")
+    
+    # --- TAB 3: BIOMETRIC FACIAL SETUP ---
+    with tab3:
+        st.markdown("### Biometric Facial Setup")
         students = get_all_students()
-        not_enrolled = [s for s in students if not s['face_enrolled']]
+        not_enrolled = [s for s in students if not s.get('face_enrolled')]
 
         if not_enrolled:
             options = {f"{format_student_name(s)} ({s['reg_no']})": s['id'] for s in not_enrolled}
-            selected = st.selectbox("Select Target Student", list(options.keys()))
-            
-            st.info("Ensure subject is well-lit and directly faces the visual camera array.")
-            if st.button("INITIALIZE CAMERA BIOMETRIC CAPTURE"):
-                with st.spinner("Locking facial vector geometry..."):
-                    success, message = enroll_face_for_student(options[selected])
-                if success:
-                    st.success(message)
-                    st.rerun()
-                else:
-                    st.error(message)
+            selected = st.selectbox("Select Student for Face Enrollment", list(options.keys()))
+            st.info("Camera will open in a separate window. Press 'q' to cancel.")
+            if st.button("Run Camera for Biometric Setup", use_container_width=True):
+                import sys
+                import os
+                src_path = os.path.join(os.path.dirname(__file__), '..')
+                if src_path not in sys.path:
+                    sys.path.append(src_path)
+                from enrollment.enroll_face import enroll_face_for_student
+                with st.spinner("Opening camera..."):
+                    try:
+                        success, message = enroll_face_for_student(options[selected])
+                        if success:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
+                    except Exception as e:
+                        st.error(f"Error: {e}")
         else:
-            st.success("All registered student profiles have calibrated facial encodings.")
+            st.success("All students have completed facial enrollment.")
 
 # --- PAGE: ATTENDANCE SESSION ---
 def show_session():
+    from database.db_queries import get_students_in_subject, get_attendance_for_session, get_session_by_id, mark_attendance
+    from datetime import datetime
+    from dashboard.session import determine_status
+    
     admin = st.session_state.admin
     st.markdown("<h1>Live Tracking</h1>", unsafe_allow_html=True)
     subjects = get_subjects_by_admin(admin['id'])
@@ -585,16 +639,132 @@ def show_session():
         session_id = st.session_state.active_session_id
         start_time = st.session_state.active_session_start
 
-        # --- CAMERA INSIDE STREAMLIT ---
         st.markdown("""
         <div style="background: rgba(255, 59, 48, 0.1); border: 1px solid #FF3B30; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
             <h3 style="color:#FF3B30; margin:0;">SCANNER ARMED</h3>
-            <p style="color:white; margin:0; padding-top:4px;">Camera is active — faces will be detected automatically</p>
+            <p style="color:white; margin:0; padding-top:4px;">Camera is active — faces will be detected automatically. Press 'q' to stop.</p>
         </div>
         """, unsafe_allow_html=True)
-
-        # --- START THE CAMERA INSIDE STREAMLIT ---
-        process_student_scan(session_id, start_time)
+        
+        # --- START ATTENDANCE ---
+        if st.button("Start Attendance", use_container_width=True):
+            import cv2
+            import face_recognition
+            import numpy as np
+            import os
+            import pickle
+            from enrollment.enroll_face import load_face_encodings
+            
+            st.info("Camera window opening... Press 'q' to stop.")
+            
+            session_info = get_session_by_id(session_id)
+            if not session_info:
+                st.error("Session not found.")
+                return
+            
+            subject_students = get_students_in_subject(session_info['subject_id'])
+            if not subject_students:
+                st.warning("No students enrolled in this subject.")
+                return
+            
+            # Load encodings for enrolled students
+            student_encodings = {}
+            student_info = {}
+            for s in subject_students:
+                enc = load_face_encodings(s['id'])
+                if enc is not None:
+                    student_encodings[s['id']] = np.array(enc)
+                    student_info[s['id']] = {
+                        'reg_no': s['reg_no'],
+                        'first_name': s['first_name'],
+                        'last_name': s['last_name']
+                    }
+            
+            if not student_encodings:
+                st.warning("No face encodings found for enrolled students. Please enroll faces first.")
+                return
+            
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                st.error("Camera could not be opened.")
+                return
+            
+            marked_students = set()
+            frame_counter = 0
+            FRAME_SKIP = 2
+            SCALE_FACTOR = 0.5
+            UPSAMPLE = 0
+            TOLERANCE = 0.4
+            
+            window_name = "Attendance Scanner - Press 'q' to stop"
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(window_name, 640, 480)
+            
+            st.info(f"Students enrolled: {len(student_encodings)}. Starting attendance...")
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                frame = cv2.flip(frame, 1)
+                frame_counter += 1
+                
+                if frame_counter % FRAME_SKIP == 0:
+                    small = cv2.resize(frame, (0, 0), fx=SCALE_FACTOR, fy=SCALE_FACTOR)
+                    rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+                    
+                    locations = face_recognition.face_locations(rgb, number_of_times_to_upsample=UPSAMPLE)
+                    encodings = face_recognition.face_encodings(rgb, locations)
+                    
+                    for (top, right, bottom, left), face_encoding in zip(locations, encodings):
+                        top, right, bottom, left = [int(v / SCALE_FACTOR) for v in (top, right, bottom, left)]
+                        
+                        best_match_id = None
+                        best_distance = 1.0
+                        
+                        # Check against ALL students (even if already marked)
+                        for student_id, known_encoding in student_encodings.items():
+                            matches = face_recognition.compare_faces([known_encoding], face_encoding, tolerance=TOLERANCE)
+                            if True in matches:
+                                distance = face_recognition.face_distance([known_encoding], face_encoding)[0]
+                                if distance < best_distance:
+                                    best_distance = distance
+                                    best_match_id = student_id
+                        
+                        # Show name ALWAYS (whether marked or not)
+                        if best_match_id is not None:
+                            info = student_info[best_match_id]
+                            label = f"{info['first_name']} {info['last_name']}"
+                            
+                            # Mark attendance only if not already marked
+                            if best_match_id not in marked_students:
+                                now = datetime.now()
+                                status = determine_status(start_time)
+                                mark_attendance(session_id, best_match_id, status, marked_by='face')
+                                marked_students.add(best_match_id)
+                                st.success(f"✅ Marked present: {info['first_name']} {info['last_name']} ({info['reg_no']})")
+                        else:
+                            label = "Unknown"
+                        
+                        # Draw rectangle
+                        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+                        
+                        # Show name ALWAYS
+                        cv2.putText(frame, label, (left, top - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    
+                    cv2.putText(frame, f"Faces: {len(locations)} | Marked: {len(marked_students)}/{len(student_encodings)}", 
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                
+                cv2.imshow(window_name, frame)
+                
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            
+            cap.release()
+            cv2.destroyAllWindows()
+            st.success(f"✅ Attendance completed! Marked {len(marked_students)} students present.")
 
         # --- MANUAL ATTENDANCE OVERRIDE ---
         st.markdown("<hr>", unsafe_allow_html=True)
@@ -621,7 +791,7 @@ def show_session():
                 for r in records:
                     r_copy = dict(r)
                     if 'first_name' in r_copy and 'last_name' in r_copy:
-                        r_copy['Student Name'] = format_student_name(r_copy)
+                        r_copy['Student Name'] = f"{r_copy['first_name']} {r_copy['last_name']}"
                     formatted_records.append(r_copy)
                 st.dataframe(pd.DataFrame(formatted_records), use_container_width=True, hide_index=True)
 
@@ -635,37 +805,164 @@ def show_session():
                 else:
                     st.error("Key rejected. Passphrase incorrect.")
 
+
 # --- PAGE: VIEW ATTENDANCE ---
 def show_attendance():
-    st.markdown("<h1>Reports & Downloads</h1>", unsafe_allow_html=True)
-    subjects = get_subjects_by_admin(st.session_state.admin['id'])
+    st.markdown("<h1>Reports and Downloads</h1>", unsafe_allow_html=True)
+    
+    admin = st.session_state.admin
+    subjects = get_subjects_by_admin(admin['id'])
     
     if not subjects:
         st.info("No course modules available.")
         return
 
+    # --- SUBJECT SELECTOR ---
     subject_options = {f"{s['course_code']} - {s['course_title']}": s['id'] for s in subjects}
-    selected_id = subject_options[st.selectbox("Data Source Module", list(subject_options.keys()))]
+    selected_label = st.selectbox("Select Course Module", list(subject_options.keys()))
+    selected_subject_id = subject_options[selected_label]
 
-    records = get_attendance_by_subject(selected_id)
-    if not records:
-        st.info("No attendance records logged for this course yet.")
+    # --- GET LATEST SESSION ---
+    from database.db import get_connection as get_db_connection
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT id, date, start_time, end_time 
+        FROM sessions 
+        WHERE subject_id = %s 
+        ORDER BY id DESC 
+        LIMIT 1
+    """, (selected_subject_id,))
+    
+    latest_session = cursor.fetchone()
+    conn.close()
+
+    if not latest_session:
+        st.info("No attendance sessions found for this course.")
         return
 
+    session_id = latest_session[0]
+    session_date = latest_session[1]
+    start_time = latest_session[2]
+    end_time = latest_session[3]
+
+    # --- FORMAT TIME ---
+    if hasattr(start_time, 'strftime'):
+        start_time_display = start_time.strftime('%I:%M %p')
+        start_time_file = start_time.strftime('%H-%M')
+    else:
+        start_time_display = str(start_time)
+        start_time_file = str(start_time).replace(':', '-')
+
+    if end_time and hasattr(end_time, 'strftime'):
+        end_time_display = end_time.strftime('%I:%M %p')
+    else:
+        end_time_display = 'In Progress'
+
+    # --- DISPLAY SESSION INFO ---
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 20px 25px; border-radius: 12px; border: 1px solid rgba(212, 175, 55, 0.3); margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div>
+                <h3 style="margin: 0; color: #D4AF37; font-weight: 600;">Attendance Report</h3>
+                <p style="margin: 5px 0 0 0; color: #A0AAB5; font-size: 0.95rem;">
+                    <span style="color: #FFFFFF;">Course:</span> {selected_label}
+                </p>
+            </div>
+            <div style="text-align: right;">
+                <p style="margin: 0; color: #A0AAB5; font-size: 0.85rem;">
+                    <span style="color: #FFFFFF;">Date:</span> {session_date}<br>
+                    <span style="color: #FFFFFF;">Time:</span> {start_time_display} - {end_time_display}
+                </p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # --- FETCH ATTENDANCE ---
+    from database.db_queries import get_attendance_for_session
+    records = get_attendance_for_session(session_id)
+
+    if not records:
+        st.info("No attendance records found for this session.")
+        return
+
+    # --- FORMAT DATA ---
     formatted_records = []
     for r in records:
         r_copy = dict(r)
         if 'first_name' in r_copy and 'last_name' in r_copy:
-            r_copy['Name'] = format_student_name(r_copy)
+            r_copy['Student Name'] = f"{r_copy['first_name']} {r_copy['last_name']}"
+        status = r_copy.get('status', '')
+        if status == 'Present':
+            r_copy['Status'] = '✅ Present'
+        elif status == 'Absent':
+            r_copy['Status'] = '❌ Absent'
+        elif status == 'Late':
+            r_copy['Status'] = '⏰ Late'
+        else:
+            r_copy['Status'] = status
         formatted_records.append(r_copy)
 
-    st.dataframe(pd.DataFrame(formatted_records), use_container_width=True, hide_index=True)
+    df = pd.DataFrame(formatted_records)
+    
+    display_columns = ['Student Name', 'reg_no', 'Status']
+    available_columns = [col for col in display_columns if col in df.columns]
+    
+    st.dataframe(
+        df[available_columns], 
+        use_container_width=True, 
+        hide_index=True,
+        column_config={
+            "Student Name": st.column_config.TextColumn("Student Name", width="large"),
+            "reg_no": st.column_config.TextColumn("Registration No", width="medium"),
+            "Status": st.column_config.TextColumn("Status", width="small"),
+        }
+    )
 
-    if st.button("GENERATE CSV REPORT"):
-        filepath = export_subject_attendance_csv(selected_id)
-        if filepath and os.path.exists(filepath):
-            with open(filepath, 'rb') as f:
-                st.download_button("CONFIRM DOWNLOAD CSV", data=f, file_name=os.path.basename(filepath), mime='text/csv')
+    # --- SUMMARY STATS ---
+    present_count = len(df[df['status'] == 'Present']) if 'status' in df.columns else 0
+    absent_count = len(df[df['status'] == 'Absent']) if 'status' in df.columns else 0
+    late_count = len(df[df['status'] == 'Late']) if 'status' in df.columns else 0
+    total_count = len(df)
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Students", total_count)
+    with col2:
+        st.metric("Present", present_count, delta=f"{present_count/total_count*100:.0f}%" if total_count > 0 else "0%")
+    with col3:
+        st.metric("Absent", absent_count)
+    with col4:
+        st.metric("Late", late_count)
+
+    # --- DOWNLOAD BUTTON ---
+    st.markdown("---")
+    
+    csv_data = []
+    for r in records:
+        name = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
+        csv_data.append({
+            'Registration No': r.get('reg_no', ''),
+            'Student Name': name,
+            'Status': r.get('status', ''),
+            'Date': session_date,
+            'Time': start_time_display
+        })
+    
+    df_csv = pd.DataFrame(csv_data)
+    csv = df_csv.to_csv(index=False)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.download_button(
+            label="Download Attendance Report (CSV)",
+            data=csv,
+            file_name=f"attendance_{selected_label.replace(' ', '_')}_{session_date}_{start_time_file}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
 
 # --- PAGE: CAMERA TEST ---
 def show_camera_test():
@@ -673,140 +970,99 @@ def show_camera_test():
     
     st.markdown("""
     <div class="dash-card" style="border-left-color: #007AFF;">
-        <h3 style="margin:0;">Camera Feed Test</h3>
-        <p style="color:#A0AAB5;">Click "Start" to begin face detection.</p>
+        <h3 style="margin:0;">Multi-Face Recognition Test</h3>
+        <p style="color:#A0AAB5;">This will detect multiple faces and show names. Press 'q' to close.</p>
     </div>
     <br>
     """, unsafe_allow_html=True)
-
-    from streamlit_webrtc import webrtc_streamer
-    import av
-    import cv2
-    import face_recognition
-    from database.db_queries import get_all_students
-    from enrollment.enroll_face import load_face_encodings
-
-    # --- LOAD ALL STUDENT ENCODINGS ONCE ---
-    @st.cache_data
-    def load_all_student_encodings():
+    
+    if st.button("Open Camera Test", use_container_width=True):
+        import cv2
+        import face_recognition
+        import numpy as np
+        import os
+        import pickle
+        from database.db_queries import get_all_students
+        
+        # --- LOAD ALL STUDENT ENCODINGS ---
+        encodings_dir = os.path.join(os.path.dirname(__file__), '..', 'data', 'encodings')
         students = get_all_students()
-        student_data = []
+        
+        known_encodings = []
+        known_names = []
+        known_regs = []
+        known_ids = []
+        
         for s in students:
-            enc = load_face_encodings(s['id'])
-            if enc is not None:
-                student_data.append({
-                    'id': s['id'],
-                    'reg_no': s['reg_no'],
-                    'first_name': s['first_name'],
-                    'last_name': s['last_name'],
-                    'encoding': enc
-                })
-        return student_data
-
-    student_data = load_all_student_encodings()
-
-    # --- CONFIG ---
-    FRAME_SKIP = 3
-    SCALE_FACTOR = 0.5
-    UPSAMPLE = 0
-    frame_counter = 0
-
-    def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
-        nonlocal frame_counter
-        frame_counter += 1
-
-        img = frame.to_ndarray(format="bgr24")
-
-        # --- MIRROR ---
-        img = cv2.flip(img, 1)
-
-        # Process every few frames
-        if frame_counter % FRAME_SKIP == 0:
-            # Downscale for speed
-            small = cv2.resize(img, (0, 0), fx=SCALE_FACTOR, fy=SCALE_FACTOR)
-            rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-
-            # Detect faces
-            locations = face_recognition.face_locations(rgb, number_of_times_to_upsample=UPSAMPLE)
-            encodings = face_recognition.face_encodings(rgb, locations)
-
-            # Draw rectangles and display names
-            for (top, right, bottom, left), face_encoding in zip(locations, encodings):
-                # Scale back to original size
-                top, right, bottom, left = [int(v / SCALE_FACTOR) for v in (top, right, bottom, left)]
-
-                # Default: Unknown
-                name = "Unknown"
-                reg_no = ""
-
-                # Compare with all enrolled students
-                for student in student_data:
-                    matches = face_recognition.compare_faces([student['encoding']], face_encoding, tolerance=0.5)
-                    if True in matches:
-                        name = f"{student['first_name']} {student['last_name']}"
-                        reg_no = student['reg_no']
-                        break
-
-                # Draw green rectangle
-                cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)
-
-                # Draw name and roll number above the face
-                if reg_no:
-                    label = f"{name} ({reg_no})"
-                    cv2.putText(img, label, (left, top - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                else:
-                    cv2.putText(img, "Unknown", (left, top - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
-            # Show face count
-            cv2.putText(img, f"Faces: {len(locations)}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-    # --- SMALL CAMERA BOX ---
-    col1, col2, col3 = st.columns([1, 2, 1])
-
-    with col2:
-        st.markdown("""
-        <style>
-            .stVideo video {
-                width: 350px !important;
-                height: 280px !important;
-                max-width: 350px !important;
-                max-height: 280px !important;
-                border-radius: 12px !important;
-                border: 2px solid rgba(212, 175, 55, 0.4) !important;
-                object-fit: cover !important;
-            }
-            .stVideo {
-                width: 350px !important;
-                height: 280px !important;
-                max-width: 350px !important;
-                max-height: 280px !important;
-            }
-            .stVideo > div {
-                width: 350px !important;
-                height: 280px !important;
-                max-width: 350px !important;
-                max-height: 280px !important;
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        webrtc_streamer(
-            key="camera-test-final-mirror",
-            video_frame_callback=video_frame_callback,
-            media_stream_constraints={
-                "video": {"width": {"ideal": 320}, "height": {"ideal": 240}},
-                "audio": False
-            },
-            rtc_configuration={
-                "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-            }
-        )
-
+            filepath = os.path.join(encodings_dir, f"{s['id']}.pkl")
+            if os.path.exists(filepath):
+                with open(filepath, 'rb') as f:
+                    enc = pickle.load(f)
+                    known_encodings.append(enc)
+                    known_names.append(f"{s['first_name']} {s['last_name']}")
+                    known_regs.append(s['reg_no'])
+                    known_ids.append(s['id'])
+        
+        st.info(f"Loaded {len(known_encodings)} face encodings. Press 'q' to quit.")
+        
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            st.error("❌ Camera could not be opened.")
+        else:
+            st.success("✅ Camera opened! Look for a separate window.")
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                # Flip for selfie view
+                frame = cv2.flip(frame, 1)
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Detect all faces
+                face_locations = face_recognition.face_locations(rgb)
+                face_encodings = face_recognition.face_encodings(rgb, face_locations)
+                
+                # Process each face found
+                for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+                    name = "Unknown"
+                    reg_no = ""
+                    
+                    # Compare with known faces
+                    if known_encodings:
+                        matches = face_recognition.compare_faces(known_encodings, face_encoding, tolerance=0.5)
+                        
+                        if True in matches:
+                            # Get the first match
+                            match_index = matches.index(True)
+                            name = known_names[match_index]
+                            reg_no = known_regs[match_index]
+                    
+                    # Draw green rectangle
+                    cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+                    
+                    # Draw name and roll number
+                    if reg_no:
+                        label = f"{name} ({reg_no})"
+                        cv2.putText(frame, label, (left, top - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    else:
+                        cv2.putText(frame, "Unknown", (left, top - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                
+                # Show face count
+                cv2.putText(frame, f"Faces Detected: {len(face_locations)}", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                
+                cv2.imshow("Face Recognition - Press q to quit", frame)
+                
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            
+            cap.release()
+            cv2.destroyAllWindows()
+            st.success("✅ Camera test complete.")
 # --- PAGE: ADMIN SETTINGS ---
 def show_admin_settings():
     st.markdown("<h1>Admin Settings</h1>", unsafe_allow_html=True)
@@ -832,6 +1088,7 @@ def show_admin_settings():
                         st.error("Username already exists in system.")
                 else:
                     st.error("All input fields are required.")
+
 
 # --- ROUTER ENTRYPOINT ---
 def main():

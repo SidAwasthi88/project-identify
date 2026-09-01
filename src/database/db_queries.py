@@ -1,4 +1,5 @@
 import hashlib
+import mysql.connector
 from mysql.connector.errors import IntegrityError
 from .db import get_connection, fetch_one_dict, fetch_all_dict
 
@@ -74,12 +75,44 @@ def add_subject(course_code: str, course_title: str, program: str, year: str, se
     conn.close()
 
 def remove_subject(subject_id: int):
+    """
+    Delete a subject and all related data in the correct order.
+    """
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM subjects WHERE id = %s", (subject_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    
+    try:
+        # Step 1: Delete attendance records linked to sessions of this subject
+        cursor.execute("""
+            DELETE attendance FROM attendance
+            INNER JOIN sessions ON attendance.session_id = sessions.id
+            WHERE sessions.subject_id = %s
+        """, (subject_id,))
+        
+        # Step 2: Delete sessions for this subject
+        cursor.execute("DELETE FROM sessions WHERE subject_id = %s", (subject_id,))
+        
+        # Step 3: Delete subject-student enrollments
+        cursor.execute("DELETE FROM subject_students WHERE subject_id = %s", (subject_id,))
+        
+        # Step 4: Finally, delete the subject
+        cursor.execute("DELETE FROM subjects WHERE id = %s", (subject_id,))
+        
+        conn.commit()
+        print(f"✅ Subject {subject_id} and all related data deleted successfully.")
+        return True
+        
+    except mysql.connector.Error as err:
+        conn.rollback()
+        print(f"❌ Database error: {err}")
+        return False
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Error: {e}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
 
 def get_subjects_by_admin(admin_id: int):
     conn = get_connection()
@@ -125,12 +158,36 @@ def add_student(reg_no, last_name, first_name, middle_name, gender, program, yea
         conn.close()
 
 def remove_student(student_id: int):
+    """
+    Delete a student and all related data:
+    - Attendance records
+    - Subject enrollments
+    - Face encoding file
+    - Student record
+    """
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM students WHERE id = %s", (student_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    
+    try:
+        # Step 1: Delete attendance records
+        cursor.execute("DELETE FROM attendance WHERE student_id = %s", (student_id,))
+        
+        # Step 2: Delete subject enrollments
+        cursor.execute("DELETE FROM subject_students WHERE student_id = %s", (student_id,))
+        
+        # Step 3: Delete the student
+        cursor.execute("DELETE FROM students WHERE id = %s", (student_id,))
+        
+        conn.commit()
+        return True
+        
+    except mysql.connector.Error as err:
+        conn.rollback()
+        print(f"❌ Database error: {err}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
 
 def assign_roll_numbers(program: str, year: str, semester: str):
     conn = get_connection()
