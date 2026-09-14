@@ -1,43 +1,38 @@
 """
-camera_test.py
+src/recognition/camera_test.py
 
 A live recognition test tool. Opens a webcam window, detects every face
 in view, compares it against all saved encodings in data/encodings/, and
-draws a box + the student's full name and roll number above their face.
+draws a box + student name and registration/roll number above their face.
 
-Also draws facial landmark points (the "vector mapping" visualization)
-and clearly labels each face independently, so multiple people in frame
-are each handled on their own rather than causing an error.
-
-This does NOT touch the attendance database at all — it's purely a
-visual test tool.
-
-Press 'q' in the camera window to close it.
+Also renders facial landmark vector dots and distance confidence metrics.
+Does NOT touch the attendance database.
 """
 
-import cv2
-import face_recognition
 import os
+import sys
+import cv2
 import pickle
 import numpy as np
-import sys
+import face_recognition
 
-# Ensure proper path loading for database imports
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# Path resolution for database module queries
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.db_queries import get_student_by_id
 
-ENCODINGS_DIR = os.path.join(os.path.dirname(__file__), '../../data/encodings')
+ENCODINGS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../data/encodings'))
 TOLERANCE = 0.5
 RESIZE_SCALE = 0.25
 
 
 def _open_camera():
-    """Tries a couple of backends/indices so it's more likely to open on Linux/Windows."""
+    """Tries multiple index positions and platform V4L2 backends to initialize webcam."""
     for index in (0, 1):
         cap = cv2.VideoCapture(index)
         if cap.isOpened():
             return cap
         cap.release()
+        
         cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
         if cap.isOpened():
             return cap
@@ -46,7 +41,7 @@ def _open_camera():
 
 
 def _load_known_faces():
-    """Loads every saved encoding + builds a 'Name (Roll No.)' label for each student."""
+    """Loads serialized encodings and resolves full names + roll/registration numbers."""
     known_encodings = []
     known_labels = []
 
@@ -57,18 +52,18 @@ def _load_known_faces():
         if not filename.endswith('.pkl'):
             continue
 
-        student_id = int(filename.split('.')[0])
-        filepath = os.path.join(ENCODINGS_DIR, filename)
-
         try:
+            student_id = int(filename.split('.')[0])
+            filepath = os.path.join(ENCODINGS_DIR, filename)
+
             with open(filepath, 'rb') as f:
                 encoding = pickle.load(f)
 
             student = get_student_by_id(student_id)
             if student:
-                full_name = f"{student['first_name']} {student['last_name']}"
-                roll_no = student.get('roll_no')
-                label = f"{full_name} (Roll {roll_no})" if roll_no else full_name
+                full_name = f"{student.get('first_name', '')} {student.get('last_name', '')}".strip()
+                roll_no = student.get('reg_no') or student.get('roll_no')
+                label = f"{full_name} ({roll_no})" if roll_no else full_name
             else:
                 label = f"Student #{student_id}"
 
@@ -81,7 +76,7 @@ def _load_known_faces():
 
 
 def _draw_landmarks(frame, landmarks, scale):
-    """Draws every facial landmark point as a small dot — the 'vector mapping' visualization."""
+    """Draws 68 facial landmark feature points as vector dots."""
     for feature_points in landmarks.values():
         for (x, y) in feature_points:
             pt_x, pt_y = int(x / scale), int(y / scale)
@@ -90,10 +85,8 @@ def _draw_landmarks(frame, landmarks, scale):
 
 def run_camera_test():
     """
-    Opens a live window and labels recognized faces (name + roll no.) until
-    'q' is pressed. Every face in frame is matched independently.
-
-    Returns True if execution ran, False if the camera or encodings couldn't load.
+    Executes live visual recognition test.
+    Renders vector landmarks, distance confidence, and independently tags faces.
     """
     known_encodings, known_labels = _load_known_faces()
 
@@ -103,7 +96,7 @@ def run_camera_test():
 
     video_capture = _open_camera()
     if video_capture is None:
-        print("❌ Could not open any webcam.")
+        print("❌ Could not open webcam device.")
         return False
 
     window_name = "Camera Test - Press Q to close"
@@ -122,7 +115,9 @@ def run_camera_test():
             face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
             landmarks_list = face_recognition.face_landmarks(rgb_small_frame, face_locations)
 
-            for (top, right, bottom, left), face_encoding, landmarks in zip(face_locations, face_encodings, landmarks_list):
+            for (top, right, bottom, left), face_encoding, landmarks in zip(
+                face_locations, face_encodings, landmarks_list
+            ):
                 top, right, bottom, left = [int(v / RESIZE_SCALE) for v in (top, right, bottom, left)]
 
                 matches = face_recognition.compare_faces(known_encodings, face_encoding, tolerance=TOLERANCE)
@@ -141,7 +136,7 @@ def run_camera_test():
                 display_label = f"{label}{confidence_str}"
                 box_color = (0, 200, 0) if label != "Unknown" else (0, 0, 200)
 
-                # Draw bounding box and facial feature landmarks
+                # Draw bounding box and facial feature landmark mesh
                 cv2.rectangle(frame, (left, top), (right, bottom), box_color, 2)
                 _draw_landmarks(frame, landmarks, RESIZE_SCALE)
 
