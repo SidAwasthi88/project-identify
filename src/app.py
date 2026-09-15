@@ -2,7 +2,7 @@
 app.py — Project IDentify (Streamlit dashboard)
 
 Theme: Maroon (#7B1E1E) + Cream (#FDFBF7)
-Menu toggle is a real button in the main area — always visible, never stuck.
+Sidebar navigation uses buttons (reliable full width) — always visible, never stuck.
 """
 
 import os
@@ -23,6 +23,24 @@ PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 
 
 # ─────────────────────────────────────────────────────────────
+# PAGE ICON
+# ─────────────────────────────────────────────────────────────
+def _find_page_icon():
+    candidates = [
+        os.path.join(PROJECT_ROOT, "images", "favicon_logo.ico"),
+        os.path.join(PROJECT_ROOT, "images", "logo.png"),
+        os.path.join(CURRENT_DIR, "..", "images", "favicon_logo.ico"),
+        os.path.join(CURRENT_DIR, "..", "images", "logo.png"),
+        os.path.join("images", "favicon_logo.ico"),
+        os.path.join("images", "logo.png"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return "🛡️"
+
+
+# ─────────────────────────────────────────────────────────────
 # BACKEND IMPORTS
 # ─────────────────────────────────────────────────────────────
 from database.db import init_db
@@ -39,20 +57,37 @@ from enrollment.enroll_face import enroll_face_for_student
 from recognition.scan_attendance import run_live_attendance
 from recognition.camera_test import run_camera_test
 
-
 init_db()
-
 
 # ─────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Project IDentify | KUSOM",
-    page_icon="🛡️",
+    page_title="Project IDentify",
+    page_icon=_find_page_icon(),
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
+st.markdown("""
+    <style>
+    div[data-testid="stSidebar"] [data-testid="stElementContainer"],
+    div[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div {
+        width: 100% !important;
+    }
+    div[data-testid="stSidebar"] [data-testid="stButton"],
+    div[data-testid="stSidebar"] [data-testid="stButton"] > button {
+        width: 100% !important;
+        display: block !important;
+        box-sizing: border-box !important;
+    }
+    div[data-testid="stSidebar"] .stMarkdown a,
+    div[data-testid="stSidebar"] .stMarkdown div {
+        width: 100% !important;
+        box-sizing: border-box !important;
+        display: block !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
 # SESSION STATE
@@ -68,6 +103,11 @@ defaults = {
 }
 for k, v in defaults.items():
     st.session_state.setdefault(k, v)
+
+PAGES = [
+    "Dashboard", "My Subjects", "Student Directory",
+    "Live Attendance", "Camera Check", "Reports & Downloads", "Admin Settings",
+]
 
 
 # ─────────────────────────────────────────────────────────────
@@ -128,6 +168,41 @@ def inject_theme():
     p, span, label, li { color: #2B1810; }
     hr { border: none !important; border-top: 1px solid #EDE4D3 !important; margin: 20px 0 !important; }
 
+    .section-label {
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 1.4px !important;
+        color: #A89A85 !important;
+        text-transform: uppercase !important;
+        margin-bottom: 4px !important;
+    }
+
+    .live-badge {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        background: #0F4C3A !important;
+        color: #E8F5EC !important;
+        padding: 4px 12px !important;
+        border-radius: 20px !important;
+        font-weight: 600 !important;
+        font-size: 0.72rem !important;
+        letter-spacing: 0.4px !important;
+    }
+
+    .top-bar {
+        background: #FFFFFF !important;
+        border: 1px solid #EDE4D3 !important;
+        border-radius: 12px !important;
+        padding: 14px 22px !important;
+        margin-bottom: 22px !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03) !important;
+        min-height: 60px !important;
+    }
+
     .dash-card {
         background: #FFFFFF !important;
         border: 1px solid #EDE4D3 !important;
@@ -140,8 +215,9 @@ def inject_theme():
         box-shadow: 0 4px 12px rgba(123,30,30,0.08) !important;
     }
 
-    .stButton > button, 
-    [data-testid="stFormSubmitButton"] > button, 
+    /* ── DEFAULT / PRIMARY BUTTONS (main content area) ── */
+    .stButton > button,
+    [data-testid="stFormSubmitButton"] > button,
     .stDownloadButton > button {
         background: #7B1E1E !important;
         color: #FAF6F0 !important;
@@ -155,16 +231,14 @@ def inject_theme():
         box-shadow: 0 2px 6px rgba(123,30,30,0.18) !important;
         transition: all 0.2s ease !important;
     }
-
-    .stButton > button *, 
-    [data-testid="stFormSubmitButton"] > button *, 
+    .stButton > button *,
+    [data-testid="stFormSubmitButton"] > button *,
     .stDownloadButton > button * {
         color: #FAF6F0 !important;
         white-space: nowrap !important;
     }
-
-    .stButton > button:hover, 
-    [data-testid="stFormSubmitButton"] > button:hover, 
+    .stButton > button:hover,
+    [data-testid="stFormSubmitButton"] > button:hover,
     .stDownloadButton > button:hover {
         background: #5C1212 !important;
         transform: translateY(-1px) !important;
@@ -197,78 +271,102 @@ def inject_theme():
     section[data-testid="stSidebar"] > div > div {
         background-color: #FAF6F0 !important;
     }
-    section[data-testid="stSidebar"] div[role="radiogroup"] {
-        width: 100% !important;
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 4px !important;
+
+    /* kill every default gap in the sidebar */
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"],
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div,
+    section[data-testid="stSidebar"] [data-testid="stElementContainer"] {
+        gap: 0 !important;
+        row-gap: 0 !important;
+        column-gap: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
-        position: relative !important;
-        display: flex !important;
-        align-items: center !important;
+    section[data-testid="stSidebar"] [data-testid="stButton"],
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button {
         width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        min-height: 40px !important;
+        height: auto !important;
         box-sizing: border-box !important;
-        padding: 10px 14px !important;
         border-radius: 8px !important;
-        margin: 0 !important;
-        cursor: pointer !important;
-        background: transparent !important;
-        transition: background 0.15s ease !important;
-    }
-
-    section[data-testid="stSidebar"] div[role="radiogroup"] label input[type="radio"] {
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        opacity: 0 !important;
-        z-index: 10 !important;
-        cursor: pointer !important;
-        margin: 0 !important;
-    }
-
-    section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
-        display: none !important;
-    }
-
-    section[data-testid="stSidebar"] div[role="radiogroup"] label * {
-        pointer-events: none !important;
-    }
-
-    section[data-testid="stSidebar"] div[role="radiogroup"] label p {
+        box-shadow: none !important;
+        transform: none !important;
         font-size: 0.92rem !important;
-        color: #2B1810 !important;
-        margin: 0 !important;
+        font-weight: 500 !important;
+        padding: 8px 14px !important;
+        margin: 0 0 2px 0 !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button > div,
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button p {
         width: 100% !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        margin: 0 !important;
     }
 
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
+    /* Inactive nav buttons (secondary) */
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[kind="secondary"] {
+        background: transparent !important;
+        color: #2B1810 !important;
+        border: 1px solid transparent !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[kind="secondary"] p {
+        color: #2B1810 !important;
+        font-weight: 500 !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[kind="secondary"]:hover {
         background: rgba(123,30,30,0.08) !important;
+        border-color: transparent !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[kind="secondary"]:hover p {
+        color: #7B1E1E !important;
     }
 
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked),
-    section[data-testid="stSidebar"] div[role="radiogroup"] label[aria-checked="true"] {
+    /* Active nav button (primary) */
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[kind="primary"] {
         background: #7B1E1E !important;
+        color: #FAF6F0 !important;
+        border: 1px solid #7B1E1E !important;
     }
-
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p,
-    section[data-testid="stSidebar"] div[role="radiogroup"] label[aria-checked="true"] p {
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[kind="primary"] p {
         color: #FAF6F0 !important;
         font-weight: 600 !important;
     }
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[kind="primary"]:hover {
+        background: #5C1212 !important;
+        border-color: #5C1212 !important;
+    }
 
-    section[data-testid="stSidebar"] .stButton > button {
-        width: 100% !important;
-        padding: 0.6rem 1rem !important;
+    /* Sign-out button (targeted by key) */
+    section[data-testid="stSidebar"] [data-testid="stButton"]:has(button[class*="signout"]) button,
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[class*="signout"] {
         background: transparent !important;
         border: 1px solid #7B1E1E !important;
+        color: #7B1E1E !important;
+        justify-content: center !important;
+        text-align: center !important;
+        font-weight: 600 !important;
+        margin-top: 8px !important;
     }
-    section[data-testid="stSidebar"] .stButton > button * { color: #7B1E1E !important; }
-    section[data-testid="stSidebar"] .stButton > button:hover { background: #7B1E1E !important; }
-    section[data-testid="stSidebar"] .stButton > button:hover * { color: #FAF6F0 !important; }
+    section[data-testid="stSidebar"] [data-testid="stButton"]:has(button[class*="signout"]) button p,
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[class*="signout"] p {
+        color: #7B1E1E !important;
+        text-align: center !important;
+        justify-content: center !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stButton"]:has(button[class*="signout"]) button:hover,
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[class*="signout"]:hover {
+        background: #7B1E1E !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stButton"]:has(button[class*="signout"]) button:hover p,
+    section[data-testid="stSidebar"] [data-testid="stButton"] > button[class*="signout"]:hover p {
+        color: #FAF6F0 !important;
+    }
 
     input, textarea, [data-baseweb="select"] > div, [data-baseweb="input"] > div {
         background-color: #FFFFFF !important;
@@ -344,33 +442,8 @@ def top_bar_and_sidebar():
         padding: 0px !important;
         margin: 0px !important;
     }
-    [data-testid="stSidebarContent"] {
-        padding-top: 0.5rem !important;
-    }
-    [data-testid="stSidebarUserContent"] {
-        padding-top: 0.2rem !important;
-    }
-
-    div[role="radiogroup"] label[aria-checked="true"],
-    div[role="radiogroup"] label[aria-checked="true"] *,
-    div[data-testid="stSegmentedControl"] button[aria-checked="true"],
-    div[data-testid="stSegmentedControl"] button[aria-checked="true"] * {
-        color: #FAF6F0 !important;
-        font-weight: 600 !important;
-    }
-
-    div[role="radiogroup"] label[aria-checked="false"],
-    div[role="radiogroup"] label[aria-checked="false"] *,
-    div[data-testid="stSegmentedControl"] button[aria-checked="false"],
-    div[data-testid="stSegmentedControl"] button[aria-checked="false"] * {
-        color: #2B1810 !important;
-        font-weight: 500 !important;
-    }
-
-    div[role="radiogroup"] label[aria-checked="false"]:hover *,
-    div[data-testid="stSegmentedControl"] button[aria-checked="false"]:hover * {
-        color: #7B1E1E !important;
-    }
+    [data-testid="stSidebarContent"] { padding-top: 0.5rem !important; }
+    [data-testid="stSidebarUserContent"] { padding-top: 0.2rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -389,9 +462,7 @@ def top_bar_and_sidebar():
             z-index: 99999 !important;
             transform: translateX(0) !important;
         }
-        [data-testid="stAppViewContainer"] { 
-            margin-left: 280px !important; 
-        }
+        [data-testid="stAppViewContainer"] { margin-left: 280px !important; }
         </style>
         """, unsafe_allow_html=True)
     else:
@@ -401,9 +472,7 @@ def top_bar_and_sidebar():
             display: none !important;
             visibility: hidden !important;
         }
-        [data-testid="stAppViewContainer"] { 
-            margin-left: 0 !important; 
-        }
+        [data-testid="stAppViewContainer"] { margin-left: 0 !important; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -442,23 +511,29 @@ def top_bar_and_sidebar():
         )
         st.markdown(profile_html, unsafe_allow_html=True)
 
-        st.markdown("<p class='section-label'>Navigate</p>", unsafe_allow_html=True)
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-        pages = [
-            "Dashboard", "My Subjects", "Student Directory",
-            "Live Attendance", "Camera Check", "Reports & Downloads", "Admin Settings",
-        ]
-
-        if "last_page" not in st.session_state or st.session_state.last_page not in pages:
+        # ── Button-based navigation ──
+        if st.session_state.get("last_page") not in PAGES:
             st.session_state["last_page"] = "Dashboard"
 
-        page = st.radio("nav", pages, key="last_page", label_visibility="collapsed")
+        current = st.session_state["last_page"]
+        for p in PAGES:
+            is_active = (p == current)
+            if st.button(
+                p,
+                key=f"nav_{p}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+            ):
+                st.session_state["last_page"] = p
+                st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("↪  Sign out", use_container_width=True):
+        if st.button("↪  Sign out", key="signout_btn", use_container_width=True):
             st.session_state.logged_in = False
             st.session_state.admin = None
             st.session_state.active_session_id = None
+            st.rerun()
 
     badge = "<span class='live-badge'>● LIVE TRACKING</span>" if st.session_state.active_session_id else ""
     header_box = (
@@ -481,13 +556,15 @@ def top_bar_and_sidebar():
             st.markdown("<div class='toggle-btn-wrap'>", unsafe_allow_html=True)
             if st.button("»", key="sb_open", help="Expand sidebar"):
                 st.session_state.menu_open = True
+                st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
         with header_col:
             st.markdown(header_box, unsafe_allow_html=True)
     else:
         st.markdown(header_box, unsafe_allow_html=True)
 
-    return page
+    # Return the currently selected page (from state, not a local variable)
+    return st.session_state.get("last_page", "Dashboard")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -593,7 +670,7 @@ def page_subjects():
     with st.container(border=True):
         st.markdown("<h3 style='margin-top:0;'>Manage Active Modules</h3>", unsafe_allow_html=True)
         st.markdown("<p style='color:#7B6A55;font-size:0.85rem;margin-bottom:16px;'>Active courses under your instruction.</p>", unsafe_allow_html=True)
-        
+
         for s in subjects:
             c1, c2 = st.columns([5, 1], vertical_alignment="center")
             c1.markdown(
@@ -614,7 +691,7 @@ def page_subjects():
     with st.container(border=True):
         st.markdown("<h3 style='margin-top:0;'>Student Roster</h3>", unsafe_allow_html=True)
         st.markdown("<p style='color:#7B6A55;font-size:0.85rem;margin-bottom:12px;'>Manage student enrollment per course.</p>", unsafe_allow_html=True)
-        
+
         opts = {f"{s['course_code']} - {s['course_title']}": s["id"] for s in subjects}
         sel = st.selectbox("Select Target Course", list(opts.keys()), key="roster_course_select")
         sid = opts[sel]
@@ -625,7 +702,7 @@ def page_subjects():
 
         st.markdown("<br>", unsafe_allow_html=True)
         t1, t2 = st.tabs(["Enrolled Students", "Available Students"])
-        
+
         with t1:
             if enrolled:
                 for x in enrolled:
