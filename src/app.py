@@ -516,7 +516,7 @@ def top_bar_and_sidebar():
         f'<div style="display:flex;align-items:center;gap:14px;">'
         f'<span style="font-size:1.15rem;font-weight:700;color:#7B1E1E;'
         f'font-family:\'Playfair Display\',serif;">'
-        f'Project <span style="color:#B8860B;">Identify</span></span>{badge}'
+        f'Project <span style="color:#B8860B;">IDentify</span></span>{badge}'
         f'</div>'
         f'<div style="text-align:right;">'
         f'<span style="color:#A89A85;font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;">'
