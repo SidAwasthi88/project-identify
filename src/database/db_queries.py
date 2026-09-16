@@ -3,10 +3,7 @@ import mysql.connector
 from mysql.connector.errors import IntegrityError
 from .db import get_connection, fetch_one_dict, fetch_all_dict
 
-# ─────────────────────────────────────────────
 # PASSWORD HASHING
-# ─────────────────────────────────────────────
-
 def hash_password(password: str) -> str:
     """Hashes a password using SHA-256."""
     return hashlib.sha256(password.encode()).hexdigest()
@@ -15,10 +12,7 @@ def verify_password(password: str, hashed: str) -> bool:
     """Returns True if the password matches the stored hash."""
     return hash_password(password) == hashed
 
-# ─────────────────────────────────────────────
 # ADMIN QUERIES
-# ─────────────────────────────────────────────
-
 def add_admin(username: str, password: str, full_name: str, created_by: int = None):
     conn = get_connection()
     cursor = conn.cursor()
@@ -59,10 +53,7 @@ def login_admin(username: str, password: str):
         return admin
     return None
 
-# ─────────────────────────────────────────────
 # SUBJECT QUERIES
-# ─────────────────────────────────────────────
-
 def add_subject(course_code: str, course_title: str, program: str, year: str, semester: str, admin_id: int):
     conn = get_connection()
     cursor = conn.cursor()
@@ -136,10 +127,7 @@ def get_all_subjects():
     conn.close()
     return rows
 
-# ─────────────────────────────────────────────
 # STUDENT QUERIES
-# ─────────────────────────────────────────────
-
 def add_student(reg_no, last_name, first_name, middle_name, gender, program, year, semester):
     conn = get_connection()
     cursor = conn.cursor()
@@ -248,10 +236,7 @@ def mark_face_enrolled(student_id: int):
     cursor.close()
     conn.close()
 
-# ─────────────────────────────────────────────
 # SUBJECT-STUDENT ENROLLMENT
-# ─────────────────────────────────────────────
-
 def enroll_student_in_subject(subject_id: int, student_id: int):
     conn = get_connection()
     cursor = conn.cursor()
@@ -294,10 +279,7 @@ def get_students_in_subject(subject_id: int):
     conn.close()
     return rows
 
-# ─────────────────────────────────────────────
 # SESSION QUERIES
-# ─────────────────────────────────────────────
-
 def start_session(subject_id: int, admin_id: int, date: str, start_time: str):
     conn = get_connection()
     cursor = conn.cursor()
@@ -353,10 +335,7 @@ def get_sessions_by_subject(subject_id: int):
     conn.close()
     return rows
 
-# ─────────────────────────────────────────────
-# ATTENDANCE QUERIES
-# ─────────────────────────────────────────────
-
+#ATTENDANCE QUERIES
 def mark_attendance(session_id: int, student_id: int, status: str, marked_by: str = 'manual'):
     conn = get_connection()
     cursor = conn.cursor()

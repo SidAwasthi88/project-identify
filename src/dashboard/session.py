@@ -15,9 +15,7 @@ from database.db_queries import (
 
 LATE_THRESHOLD_MINUTES = 15
 
-# ─────────────────────────────────────────────
 # HELPER: Load Face Encodings
-# ─────────────────────────────────────────────
 def load_face_encodings(student_id: int):
     encodings_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'encodings')
     filepath = os.path.join(encodings_dir, f"{student_id}.pkl")

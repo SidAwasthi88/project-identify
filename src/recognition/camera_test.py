@@ -1,14 +1,3 @@
-"""
-src/recognition/camera_test.py
-
-A live recognition test tool. Opens a webcam window, detects every face
-in view, compares it against all saved encodings in data/encodings/, and
-draws a box + student name and registration/roll number above their face.
-
-Also renders facial landmark vector dots and distance confidence metrics.
-Does NOT touch the attendance database.
-"""
-
 import os
 import sys
 import cv2

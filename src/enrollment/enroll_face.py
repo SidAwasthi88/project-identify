@@ -6,9 +6,7 @@ import numpy as np
 import time
 from database.db_queries import mark_face_enrolled
 
-# ─────────────────────────────────────────────
 # CONFIGURATION & CONSTANTS
-# ─────────────────────────────────────────────
 ENCODINGS_DIR = os.path.join(os.path.dirname(__file__), '../../data/encodings')
 os.makedirs(ENCODINGS_DIR, exist_ok=True)
 
@@ -55,17 +53,13 @@ def _draw_landmarks(frame, landmarks, scale):
 
 
 def enroll_face_for_student(student_id: int):
-    """
-    Opens webcam in a separate OpenCV window for face enrollment.
-    Captures 30 face samples and saves the averaged encoding.
-    Press 'q' to cancel.
-    """
-    # --- Open camera ---
+
+    # Open camera
     video_capture = _open_camera()
     if video_capture is None:
         return False, "Could not open webcam. Ensure camera is connected and not in use by another app."
 
-    # --- Set camera properties ---
+    # Set camera properties
     video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     video_capture.set(cv2.CAP_PROP_FPS, 30)
@@ -73,13 +67,13 @@ def enroll_face_for_student(student_id: int):
     collected_encodings = []
     window_name = "Face Enrollment - Press Q to Cancel"
 
-    # --- Create window ---
+    # Create window
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(window_name, 640, 480)
     cv2.moveWindow(window_name, 200, 100)
     cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
 
-    # --- Warm up camera ---
+    # Warm up camera 
     for _ in range(5):
         ret, frame = video_capture.read()
         if not ret:
@@ -126,7 +120,7 @@ def enroll_face_for_student(student_id: int):
 
                 status_text = f"Capturing Face Data: {len(collected_encodings)}/{TARGET_SAMPLES}"
 
-            # --- Display overlay ---
+            # Display overlay 
             frame_height, frame_width = frame.shape[:2]
             cv2.rectangle(frame, (0, 0), (frame_width, 40), status_color, cv2.FILLED)
             cv2.putText(frame, status_text, (15, 26), cv2.FONT_HERSHEY_DUPLEX, 0.65, (255, 255, 255), 1)
@@ -144,7 +138,7 @@ def enroll_face_for_student(student_id: int):
         video_capture.release()
         cv2.destroyAllWindows()
 
-    # --- Save averaged encoding ---
+    # Save averaged encoding
     if len(collected_encodings) == TARGET_SAMPLES:
         averaged_encoding = np.mean(collected_encodings, axis=0)
         filepath = os.path.join(ENCODINGS_DIR, f"{student_id}.pkl")

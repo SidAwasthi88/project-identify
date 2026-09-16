@@ -3,10 +3,8 @@ from mysql.connector import errorcode
 import hashlib
 import os
 
-# ─────────────────────────────────────────────
 # CONNECTION CONFIG
 # Matches MySQL server parameters with environment variable fallbacks.
-# ─────────────────────────────────────────────
 DB_CONFIG = {
     'host': os.environ.get('IDENTIFY_DB_HOST', 'localhost'),
     'port': int(os.environ.get('IDENTIFY_DB_PORT', 3306)),
@@ -69,7 +67,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # --- ADMINS TABLE ---
+    # ADMINS TABLE
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS admins (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,7 +80,7 @@ def init_db():
         ) ENGINE=InnoDB
     """)
 
-    # --- SUBJECTS TABLE ---
+    # SUBJECTS TABLE
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS subjects (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -96,7 +94,7 @@ def init_db():
         ) ENGINE=InnoDB
     """)
 
-    # --- STUDENTS TABLE ---
+    # STUDENTS TABLE
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS students (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -114,7 +112,7 @@ def init_db():
         ) ENGINE=InnoDB
     """)
 
-    # --- SUBJECT-STUDENT ENROLLMENT TABLE ---
+    # SUBJECT-STUDENT ENROLLMENT TABLE 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS subject_students (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -126,7 +124,7 @@ def init_db():
         ) ENGINE=InnoDB
     """)
 
-    # --- SESSIONS TABLE ---
+    # SESSIONS TABLE 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -140,7 +138,7 @@ def init_db():
         ) ENGINE=InnoDB
     """)
 
-    # --- ATTENDANCE TABLE ---
+    # ATTENDANCE TABLE 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS attendance (
             id INT AUTO_INCREMENT PRIMARY KEY,

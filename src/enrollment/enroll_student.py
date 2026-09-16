@@ -1,10 +1,8 @@
 import mysql.connector
 from database.db_queries import add_student
 
-# ─────────────────────────────────────────────
-# UTILITY & FORMATTING HELPERS
-# ─────────────────────────────────────────────
 
+# UTILITY & FORMATTING HELPERS
 def get_group_label(program: str, year: str, semester: str) -> str:
     """Formats student cohort grouping into a clean readable string."""
     return f"{program} — {year} Year, {semester} Semester"
@@ -17,10 +15,7 @@ def sanitize_input(value: str) -> str:
     return str(value).strip()
 
 
-# ─────────────────────────────────────────────
 # STUDENT ENROLLMENT LOGIC
-# ─────────────────────────────────────────────
-
 def enroll_new_student(
     reg_no: str,
     last_name: str,

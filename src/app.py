@@ -1,10 +1,3 @@
-"""
-app.py — Project IDentify (Streamlit dashboard)
-
-Theme: Maroon (#7B1E1E) + Cream (#FDFBF7)
-Sidebar navigation uses buttons (reliable full width) — always visible, never stuck.
-"""
-
 import os
 import sys
 import base64
@@ -13,18 +6,14 @@ from datetime import datetime
 
 import streamlit as st
 
-# ─────────────────────────────────────────────────────────────
 # PATH SETUP
-# ─────────────────────────────────────────────────────────────
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 
 
-# ─────────────────────────────────────────────────────────────
 # PAGE ICON
-# ─────────────────────────────────────────────────────────────
 def _find_page_icon():
     candidates = [
         os.path.join(PROJECT_ROOT, "images", "favicon_logo.ico"),
@@ -40,9 +29,7 @@ def _find_page_icon():
     return "🛡️"
 
 
-# ─────────────────────────────────────────────────────────────
 # BACKEND IMPORTS
-# ─────────────────────────────────────────────────────────────
 from database.db import init_db
 from database.db_queries import (
     login_admin, add_admin, get_all_admins,
@@ -89,9 +76,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────
 # SESSION STATE
-# ─────────────────────────────────────────────────────────────
 defaults = {
     "logged_in": False,
     "admin": None,
@@ -109,10 +94,7 @@ PAGES = [
     "Live Attendance", "Camera Check", "Reports & Downloads", "Admin Settings",
 ]
 
-
-# ─────────────────────────────────────────────────────────────
 # HELPERS
-# ─────────────────────────────────────────────────────────────
 def find_image(name: str):
     for p in (
         os.path.join(PROJECT_ROOT, "images", name),
@@ -136,9 +118,7 @@ def initials(name: str) -> str:
     return (parts[0][0] + parts[-1][0]).upper() if len(parts) >= 2 else name[:2].upper()
 
 
-# ─────────────────────────────────────────────────────────────
 # THEME CSS
-# ─────────────────────────────────────────────────────────────
 def inject_theme():
     st.markdown("""
     <style>
@@ -387,9 +367,7 @@ def inject_theme():
     """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────
 # LOGIN
-# ─────────────────────────────────────────────────────────────
 def page_login():
     inject_theme()
     col1, col2, col3 = st.columns([1, 1.2, 1])
@@ -427,10 +405,7 @@ def page_login():
                 else:
                     st.error("Authentication failed. Invalid username or password.")
 
-
-# ─────────────────────────────────────────────────────────────
 # HEADER + SIDEBAR
-# ─────────────────────────────────────────────────────────────
 def top_bar_and_sidebar():
     admin = st.session_state.admin
 
@@ -567,9 +542,7 @@ def top_bar_and_sidebar():
     return st.session_state.get("last_page", "Dashboard")
 
 
-# ─────────────────────────────────────────────────────────────
 # PAGE: DASHBOARD
-# ─────────────────────────────────────────────────────────────
 def page_dashboard():
     admin = st.session_state.admin
     st.markdown("<p class='section-label'>Faculty Overview · Even Semester 2082</p>", unsafe_allow_html=True)
@@ -635,9 +608,7 @@ def page_dashboard():
             )
 
 
-# ─────────────────────────────────────────────────────────────
 # PAGE: SUBJECTS
-# ─────────────────────────────────────────────────────────────
 def page_subjects():
     admin = st.session_state.admin
     st.markdown("<h1>Course Modules</h1>", unsafe_allow_html=True)
@@ -728,9 +699,7 @@ def page_subjects():
                 st.info("All students are currently enrolled.")
 
 
-# ─────────────────────────────────────────────────────────────
 # PAGE: STUDENTS
-# ─────────────────────────────────────────────────────────────
 def page_students():
     st.markdown("<h1>Student Matrix</h1>", unsafe_allow_html=True)
     t1, t2, t3 = st.tabs(["Active Directory", "Create Student Profile", "Biometric Facial Setup"])
@@ -826,9 +795,7 @@ def page_students():
                     st.error(f"Error: {e}")
 
 
-# ─────────────────────────────────────────────────────────────
 # PAGE: LIVE ATTENDANCE
-# ─────────────────────────────────────────────────────────────
 def page_live():
     admin = st.session_state.admin
     st.markdown("<h1>Live Tracking</h1>", unsafe_allow_html=True)
@@ -1048,9 +1015,7 @@ def page_camera_test():
                 st.error(f"Error executing camera check: {e}")
 
 
-# ─────────────────────────────────────────────────────────────
 # PAGE: ADMIN SETTINGS
-# ─────────────────────────────────────────────────────────────
 def page_admin():
     st.markdown("<h1>Admin Settings</h1>", unsafe_allow_html=True)
     t1, t2 = st.tabs(["Active Administrators", "Authorize New Admin"])
@@ -1080,9 +1045,7 @@ def page_admin():
                     st.error("All fields required.")
 
 
-# ─────────────────────────────────────────────────────────────
 # MAIN ROUTER
-# ─────────────────────────────────────────────────────────────
 def main():
     if not st.session_state.logged_in:
         page_login()

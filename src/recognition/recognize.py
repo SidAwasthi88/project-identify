@@ -27,7 +27,6 @@ def _open_camera():
 
 
 def _load_known_encodings():
-    """Loads all serialized .pkl face vectors and maps them to student IDs."""
     known_encodings = []
     known_student_ids = []
 
@@ -53,17 +52,7 @@ def _load_known_encodings():
 
 
 def recognize_student(attempt: int = 1, max_frames: int = 25, show_window: bool = True) -> int | None:
-    """
-    Compares current real-time camera frames against serialized local facial mappings.
 
-    Args:
-        attempt (int): Kept for API signature compatibility.
-        max_frames (int): Maximum video frames to analyze before timing out (default: 25).
-        show_window (bool): Renders live OpenCV visual feed if True.
-
-    Returns:
-        int | None: The matched student's MySQL ID, or None if no match was found.
-    """
     known_encodings, known_student_ids = _load_known_encodings()
 
     if not known_encodings:
